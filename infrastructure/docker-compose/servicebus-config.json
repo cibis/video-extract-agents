@@ -1,0 +1,20 @@
+{
+  "UserConfig": {
+    "Namespaces": [
+      {
+        "Name": "sbemulatorns",
+        "Queues": [
+          { "Name": "video-uploaded" },
+          { "Name": "video-indexed" },
+          { "Name": "job-queued" },
+          { "Name": "job-completed" },
+          { "Name": "job-failed" }
+        ],
+        "Topics": []
+      }
+    ],
+    "Logging": {
+      "Type": "File"
+    }
+  }
+}

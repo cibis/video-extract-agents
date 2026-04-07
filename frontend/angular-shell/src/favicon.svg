@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1976D2"/>
+      <stop offset="100%" stop-color="#0D47A1"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Rounded square background -->
+  <rect width="32" height="32" rx="7.5" fill="url(#bg)"/>
+
+  <!-- Film strip perforations — left edge -->
+  <rect x="2" y="5.5"  width="3.5" height="2.8" rx="0.6" fill="rgba(255,255,255,0.38)"/>
+  <rect x="2" y="11"   width="3.5" height="2.8" rx="0.6" fill="rgba(255,255,255,0.38)"/>
+  <rect x="2" y="16.5" width="3.5" height="2.8" rx="0.6" fill="rgba(255,255,255,0.38)"/>
+  <rect x="2" y="22"   width="3.5" height="2.8" rx="0.6" fill="rgba(255,255,255,0.38)"/>
+
+  <!-- Vertical separator after strip -->
+  <line x1="7" y1="4" x2="7" y2="28" stroke="rgba(255,255,255,0.22)" stroke-width="1"/>
+
+  <!-- Play triangle -->
+  <path d="M12 9.5 L12 22.5 L24.5 16 Z" fill="white"/>
+
+  <!-- 4-pointed AI sparkle (top-right) — universally recognised "AI / magic" motif -->
+  <path d="M27 5 L27.7 7.3 L30 8 L27.7 8.7 L27 11 L26.3 8.7 L24 8 L26.3 7.3 Z" fill="#FFD54F"/>
+</svg>

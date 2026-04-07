@@ -1,0 +1,163 @@
+/**
+ * Platform CSS overrides — Video Extract Platform branding.
+ * Served as a static file from /BrandingOverride.css and injected via <link>
+ * in index.html. Applied after the main bundle so !important is not needed
+ * for most rules, but kept for safety.
+ */
+
+:root {
+  --primary-color: #0078d4;
+  --primary-dark: #005a9e;
+  --primary-light: #e3f2fd;
+  --accent-color: #00b4d8;
+}
+
+/* Override LibreChat header */
+.nav-header {
+  background-color: var(--primary-color) !important;
+  color: white !important;
+}
+
+/* Override primary button colours */
+.btn-primary,
+button[data-testid="send-button"] {
+  background-color: var(--primary-color) !important;
+  border-color: var(--primary-color) !important;
+}
+
+.btn-primary:hover,
+button[data-testid="send-button"]:hover {
+  background-color: var(--primary-dark) !important;
+  border-color: var(--primary-dark) !important;
+}
+
+/* ── Hide LibreChat features not used in this deployment ─────────────────── */
+
+/* Already suppressed via yaml; belt-and-suspenders */
+[data-testid="model-select"],
+[data-testid="endpoint-select"],
+[data-testid="parameters-panel"],
+.preset-dropdown {
+  display: none !important;
+}
+
+/* File upload — all surfaces (button, drag-drop zone, paperclip, chat-input attach) */
+/* Note: LibreChat uses id= attributes (not data-testid) for these elements */
+.file-upload-button,
+[data-testid="upload-button"],
+[data-testid="file-input"],
+[data-testid="attach-file"],
+[data-testid="attach-file-menu"],
+[data-testid="attach-file-menu-button"],
+#attach-file,
+#attach-file-menu-button,
+[aria-label="Attach File Options"],
+[aria-label="Attach files"],
+[aria-label="Attach file"],
+button[title*="ttach"],
+button[aria-label*="ttach"],
+.drag-drop-zone {
+  display: none !important;
+}
+
+/* Message actions that re-submit jobs or create orphaned state */
+[data-testid="edit-button"],
+[data-testid="regenerate-button"],
+[data-testid="fork-button"] {
+  display: none !important;
+}
+
+/* New conversation buttons — sessions are created in Angular (video upload flow) */
+[data-testid="wide-header-new-chat-button"],
+[data-testid="mobile-header-new-chat-button"],
+[data-testid="nav-new-chat"],
+[data-testid="new-convo-button"],
+a[href="/c/new"] {
+  display: none !important;
+}
+
+/* Mobile nav: pencil "new chat" button has no data-testid — hide via sibling selector.
+   The mobile header bar is md:hidden so only appears when iframe width < 768px. */
+[data-testid="mobile-header-new-chat-button"] ~ button,
+[data-testid="mobile-header-new-chat-button"] ~ h1 {
+  display: none !important;
+}
+
+/* Left nav sidebar + NavToggle handle */
+[data-testid="nav"],
+#chat-history-nav,
+#toggle-left-nav {
+  display: none !important;
+}
+
+/* Conversation management — history, sharing, export */
+[data-testid="share-button"],
+[data-testid="export-button"],
+[data-testid="rename-button"],
+[data-testid="delete-button"],
+[data-testid="search-button"] {
+  display: none !important;
+}
+
+/* Message-level extras not relevant to video extraction */
+[data-testid="speech-to-text-button"],
+[data-testid="tts-button"],
+[data-testid="bookmark-button"],
+[data-testid="tag-button"],
+[data-testid="thumbs-up"],
+[data-testid="thumbs-down"],
+[data-testid="system-prompt-button"] {
+  display: none !important;
+}
+
+/* Branding / meta UI */
+[data-testid="keyboard-shortcuts"],
+[data-testid="changelog-button"],
+.footer-version {
+  display: none !important;
+}
+
+/* Welcome screen AI avatar — replace the generic icon with a video-camera icon.
+   Targets only the large full-height circle (h-full); per-message avatars use h-6/h-7. */
+.shadow-stroke.h-full.rounded-full.bg-white > * {
+  display: none !important;
+}
+.shadow-stroke.h-full.rounded-full.bg-white {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230078d4' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2' y='7' width='13' height='10' rx='2' ry='2'/%3E%3Cpath d='M16 9l5-2v10l-5-2V9z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 55%;
+}
+
+/* App title override */
+.app-title::before {
+  content: "Video Extract Platform";
+}
+.app-title > * {
+  display: none;
+}
+
+/* ── Platform logo in LibreChat header ───────────────────────────────────── */
+
+/* Replace any img tag that LibreChat renders as its brand logo */
+.nav-header img,
+header img[alt*="ibrechat" i],
+header img[alt*="ogo" i] {
+  content: url('/logo.svg');
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+}
+
+/* Inject the icon before the app title text in the header */
+.nav-header h1::before,
+.app-title::before {
+  content: '';
+  display: inline-block;
+  width: 22px;
+  height: 22px;
+  background: url('/logo.svg') center/contain no-repeat;
+  margin-right: 6px;
+  vertical-align: middle;
+  border-radius: 4px;
+}

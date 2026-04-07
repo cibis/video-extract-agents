@@ -1,0 +1,7 @@
+[
+  { "frame_index": 0, "frame_url": "http://azurite:10000/devstoreaccount1/videos/user-1/keyframes/video-1/frame_0000.jpg", "timestamp_seconds": 0.0 },
+  { "frame_index": 1, "frame_url": "http://azurite:10000/devstoreaccount1/videos/user-1/keyframes/video-1/frame_0001.jpg", "timestamp_seconds": 1.0 },
+  { "frame_index": 5, "frame_url": "http://azurite:10000/devstoreaccount1/videos/user-1/keyframes/video-1/frame_0005.jpg", "timestamp_seconds": 5.0 },
+  { "frame_index": 10, "frame_url": "http://azurite:10000/devstoreaccount1/videos/user-1/keyframes/video-1/frame_0010.jpg", "timestamp_seconds": 10.0 },
+  { "frame_index": 15, "frame_url": "http://azurite:10000/devstoreaccount1/videos/user-1/keyframes/video-1/frame_0015.jpg", "timestamp_seconds": 15.0 }
+]

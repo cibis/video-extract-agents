@@ -1,0 +1,36 @@
+version: "3.9"
+
+# Standalone Claude Desktop external agent stack.
+# Joins the main video-extract-network so it can reach mcp-server-analysis,
+# mcp-server-processing, and azurite.  Start the main stack first:
+#   cd infrastructure/docker-compose && docker-compose up -d
+# Then start this stack:
+#   cd external-agents/claude-desktop && ./scripts/start.sh
+
+networks:
+  video-extract-network:
+    external: true
+
+services:
+  mcp-bridge:
+    build:
+      context: ../../external-agents/mcp-bridge
+      dockerfile: Dockerfile
+    container_name: video-extract-cd-mcp-bridge
+    ports:
+      - "8301:8300"   # 8301 on host — avoids collision with librechat stack (8300)
+    environment:
+      MCP_ANALYSIS_URL: http://mcp-server-analysis:8100
+      MCP_PROCESSING_URL: http://mcp-server-processing:8200
+      LOG_LEVEL: "INFO"
+      AZURE_STORAGE_CONNECTION_STRING: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;"
+      UPLOAD_CONTAINER: videos
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgresql:5432/videoextract
+    networks:
+      - video-extract-network
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8300/health')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s

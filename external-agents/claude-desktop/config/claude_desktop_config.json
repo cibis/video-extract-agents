@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "video-extraction-tools": {
+      "command": "docker",
+      "args": [
+        "exec",
+        "-i",
+        "video-extract-cd-mcp-bridge",
+        "python",
+        "-m",
+        "app.stdio_entry"
+      ]
+    }
+  }
+}

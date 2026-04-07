@@ -1,0 +1,103 @@
+/**
+ * Platform CSS overrides — Video Extract Platform branding.
+ * Import this file in the LibreChat app's global stylesheet.
+ */
+
+:root {
+  --primary-color: #0078d4;
+  --primary-dark: #005a9e;
+  --primary-light: #e3f2fd;
+  --accent-color: #00b4d8;
+}
+
+/* Override LibreChat header */
+.nav-header {
+  background-color: var(--primary-color) !important;
+  color: white !important;
+}
+
+/* Override primary button colours */
+.btn-primary,
+button[data-testid="send-button"] {
+  background-color: var(--primary-color) !important;
+  border-color: var(--primary-color) !important;
+
+  &:hover {
+    background-color: var(--primary-dark) !important;
+    border-color: var(--primary-dark) !important;
+  }
+}
+
+/* Hide LibreChat features not used in this deployment */
+
+/* Already suppressed via yaml; CSS belt-and-suspenders */
+[data-testid="model-select"],
+[data-testid="endpoint-select"],
+[data-testid="parameters-panel"],
+.preset-dropdown {
+  display: none !important;
+}
+
+/* File upload — all surfaces (button, drag-drop zone, paperclip, chat-input attach) */
+.file-upload-button,
+[data-testid="upload-button"],
+[data-testid="file-input"],
+[data-testid="attach-file"],
+[aria-label="Attach File Options"],
+.drag-drop-zone {
+  display: none !important;
+}
+
+/* Message actions that re-submit jobs or create orphaned state */
+[data-testid="edit-button"],
+[data-testid="regenerate-button"],
+[data-testid="fork-button"] {
+  display: none !important;
+}
+
+/* New conversation — sessions are created in Angular (video upload flow) */
+[data-testid="new-convo-button"],
+a[href="/c/new"] {
+  display: none !important;
+}
+
+/* Conversation management — history, sharing, export */
+[data-testid="share-button"],
+[data-testid="export-button"],
+[data-testid="rename-button"],
+[data-testid="delete-button"],
+[data-testid="search-button"] {
+  display: none !important;
+}
+
+/* Message-level extras not relevant to video extraction */
+[data-testid="speech-to-text-button"],
+[data-testid="tts-button"],
+[data-testid="bookmark-button"],
+[data-testid="tag-button"],
+[data-testid="thumbs-up"],
+[data-testid="thumbs-down"],
+[data-testid="system-prompt-button"] {
+  display: none !important;
+}
+
+/* Left nav sidebar + NavToggle handle */
+[data-testid="nav"],
+#toggle-left-nav {
+  display: none !important;
+}
+
+/* Branding / meta UI */
+[data-testid="keyboard-shortcuts"],
+[data-testid="changelog-button"],
+.footer-version {
+  display: none !important;
+}
+
+/* App title override */
+.app-title::before {
+  content: "Video Extract Platform";
+}
+.app-title > * {
+  display: none;
+}

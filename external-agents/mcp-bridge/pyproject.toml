@@ -1,0 +1,33 @@
+[tool.poetry]
+name = "mcp-bridge"
+version = "1.0.0"
+description = "Video Extract Platform — Standard MCP Bridge (translates MCP ↔ custom SSE)"
+authors = ["Video Extract Platform"]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+mcp = {extras = ["cli"], version = ">=1.9,<2.0"}
+fastapi = "^0.115.0"
+uvicorn = {extras = ["standard"], version = "^0.31.0"}
+httpx = "^0.27.0"
+pydantic-settings = "^2.6.0"
+anyio = "^4.0"
+azure-monitor-opentelemetry = "^1.6.4"
+azure-storage-blob = ">=12.20"
+asyncpg = ">=0.29"
+starlette = "^0.41.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.3"
+pytest-mock = "^3.14.0"
+pytest-asyncio = "^0.24.0"
+httpx = {extras = ["test"], version = "^0.27.0"}
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]
