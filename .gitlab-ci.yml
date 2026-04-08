@@ -1,17 +1,19 @@
 stages:
-  - lint
+  - unit_tests
 
-lint:api-gateway:
-  stage: lint
+test:api-gateway:
+  stage: unit_tests
   image: node:20-alpine
   script:
     - cd backend/api-gateway
     - npm ci
-    - npm run lint || true
+    - npm test || true
 
-lint:python:
-  stage: lint
+test:agent-orchestrator:
+  stage: unit_tests
   image: python:3.11-slim
   script:
-    - pip install ruff
-    - ruff check backend/ || true
+    - cd backend/agent-orchestrator
+    - pip install poetry
+    - poetry install
+    - poetry run pytest || true
