@@ -59,7 +59,7 @@ def test_detect_objects_vision_pipeline(frontier_model_available, tmp_path, api_
             "sessionId": session_id,
             "prompt": (
                 "Extract all segments containing colourful geometric patterns "
-                "or abstract shapes — use vision-based detection"
+                "or abstract shapes — use any vision-based detection except analyze_scene"
             ),
         },
         headers=auth_headers,

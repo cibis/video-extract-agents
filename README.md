@@ -155,24 +155,6 @@ Services run on:
 
 ## Running Tests
 
-### Unit tests
-
-```bash
-# Node.js API Gateway
-cd backend/api-gateway && npm ci && npm test
-
-# Python services (same pattern for each)
-cd backend/agent-orchestrator && poetry install && poetry run pytest tests/unit/ -v
-cd backend/preprocessing-worker && poetry install && poetry run pytest tests/unit/ -v
-cd mcp-servers/mcp-server-analysis && poetry install && poetry run pytest tests/unit/ -v
-```
-
-### Integration tests
-
-```bash
-bash scripts/run-integration-local.sh
-```
-
 ### E2E tests (fully containerised)
 
 ```bash
@@ -180,8 +162,6 @@ scripts/run-e2e-local.sh
 # With frontier vision tools:
 ANTHROPIC_API_KEY=sk-... scripts/run-e2e-local.sh
 ```
-
-Minimum coverage: **80% per service**.
 
 ---
 
@@ -264,8 +244,7 @@ infrastructure/
     envs/                 dev, prod, test (ephemeral per CI pipeline)
 
 tests/
-  integration/            Docker Compose integration tests
-  fixtures/               Shared test data
+  e2e/                    End-to-end tests (ephemeral Azure + local Docker Compose)
 
 scripts/
   init_db.py              Create all database tables

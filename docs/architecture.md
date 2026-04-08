@@ -14,7 +14,6 @@ Users upload video files and describe what they want extracted in plain English 
 | Frontend framework | Angular 19 |
 | Frontend backend (BFF) | Node.js + Express (TypeScript) |
 | Node.js dependency manager | npm |
-| Node.js testing | Jest (≥80% coverage) |
 | Python language | Python 3.11 |
 | Python framework | FastAPI + Uvicorn (agent orchestrator + workers + MCP servers) |
 | Python dependency manager | Poetry |
@@ -38,7 +37,6 @@ Users upload video files and describe what they want extracted in plain English 
 | Container registry | Azure Container Registry |
 | CDN / delivery | Azure Front Door |
 | Video processing | FFmpeg, OpenCV, Whisper |
-| Python testing | PyTest (≥80% coverage per service) |
 
 ---
 
@@ -68,9 +66,7 @@ video-extract-agents/
 │       └── envs/               dev, prod, test (ephemeral per CI pipeline)
 │
 ├── tests/
-│   ├── unit/                   Top-level unit tests (per-service tests live in service dirs)
-│   ├── integration/            Docker Compose integration tests
-│   └── fixtures/               Shared test data (keyframe index, sample jobs)
+│   └── e2e/                    End-to-end tests (ephemeral Azure + local Docker Compose)
 │
 └── scripts/
     ├── init_db.py                    Create all database tables
@@ -83,14 +79,12 @@ The `backend/api-gateway/` service is Node.js and has its own:
 - `Dockerfile` — container build
 - `.env.example` — required environment variables
 - `src/` — application source
-- `tests/` — Jest unit tests with mocked external deps
 
 All Python services (`backend/agent-orchestrator/`, `backend/preprocessing-worker/`, `backend/notification-worker/`, `mcp-servers/*/`) have their own:
 - `pyproject.toml` — Poetry dependencies
 - `Dockerfile` — container build
 - `.env.example` — required environment variables
 - `app/` — application source
-- `tests/unit/` — PyTest unit tests with mocked external deps
 
 `frontend/librechat/` is a fork of upstream LibreChat. Project-specific changes are confined to `client/src/platform/` and root config files (`librechat.yaml`, `.env.example`, `Dockerfile`) to keep upstream merges tractable.
 
@@ -319,22 +313,9 @@ CI uses real Azure integrations (real auth, real Front Door URLs, real ACS email
 
 `APPLICATIONINSIGHTS_CONNECTION_STRING` is omitted from local `.env`; both SDKs are a no-op when the var is absent.
 
-### Test levels and where they run
-
-| Level | Local | CI (GitLab) |
-|---|---|---|
-| Unit tests | Yes — per service, mocked deps | Yes |
-| Integration tests | Yes — docker-compose | Yes |
-| E2E tests | Yes — Docker Compose (`scripts/run-e2e-local.sh`) | Yes — ephemeral Azure environment |
-
-### Running tests locally
+### Running E2E tests locally
 
 ```bash
-# Integration tests:
-docker-compose up -d
-pytest tests/integration/
-# or: scripts/run-integration-local.sh
-
 # E2E tests (fully containerised — no host Python/FFmpeg needed):
 scripts/run-e2e-local.sh
 # With frontier tests:
@@ -353,8 +334,6 @@ scripts/run-e2e-local.sh -k test_detect_motion
 | `infrastructure/docker-compose/docker-compose.yml` | Set local dev flags on relevant services |
 | `backend/api-gateway/.env.example` | Document `LOCAL_DEV_SKIP_AUTH`, `OUTPUT_URL_MODE` |
 | `backend/notification-worker/.env.example` | Document `NOTIFICATION_MODE` |
-| `tests/integration/` | Ensure base URLs come from env, not hardcoded |
-| `scripts/run-integration-local.sh` | New — compose up (test profile) + pytest |
 
 ---
 
@@ -376,10 +355,7 @@ external-agents/
 │   ├── app/main.py               FastAPI app + SseServerTransport (HTTP/SSE for LibreChat)
 │   ├── app/stdio_entry.py        stdio_server entry point (for Claude Desktop subprocess)
 │   ├── pyproject.toml            mcp[cli]>=1.9, fastapi, uvicorn, httpx, pydantic-settings
-│   ├── Dockerfile
-│   └── tests/unit/
-│       ├── test_bridge.py        SSE parsing: result, error, validation_error cases
-│       └── test_server.py        Tool translation + call routing
+│   └── Dockerfile
 │
 ├── agent-instructions/
 │   └── video-extraction-agent.md  System prompt for external agents (attach via chat)
