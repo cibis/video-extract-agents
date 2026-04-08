@@ -99,7 +99,7 @@ TOOLS: dict[str, dict] = {
                     "items": {"type": "integer", "minimum": 0},
                 },
             },
-            "required": ["video_url", "job_id", "keyframe_index_asset"],
+            "required": ["video_url", "job_id"],
         },
         "output_schema": {
             "type": "object",

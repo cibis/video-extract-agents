@@ -59,9 +59,10 @@ def test_analyze_scene_pipeline(frontier_model_available, tmp_path, api_gateway_
             "videoId": video_id,
             "sessionId": session_id,
             "prompt": (
-                "Use visual scene analysis to describe what is happening in each scene of this video. "
-                "Do not use motion detection — use analyze_scene to understand the visual content. "
-                "Extract the most visually interesting scenes based on the scene descriptions."
+                "Extract the segments containing vertical color bars."
+                "Use visual scene analysis to ask if the scene contains color bars. "
+                "Do not use any detect_* tools — use analyze_scene  to understand the visual content. "
+                
             ),
         },
         headers=auth_headers,

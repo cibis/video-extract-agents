@@ -143,7 +143,7 @@ Every detection-type test follows the same six-step pattern:
 
 **Video:** `make_sports_video` — 8-second FFmpeg `testsrc2` at 320×180, 5 fps. `testsrc2` produces higher-contrast, faster-changing patterns than `testsrc`, generating stronger motion bursts.
 
-**Prompt:** `"Extract all sports action moments, jumps, and high-intensity tricks"`
+**Prompt:** `"Extract all segments containing jumps and high-intensity tricks"`
 
 **What the pipeline does:**
 Same as `detect_motion` but the planner selects `detect_motion_sports` because of the sports/jumps/tricks language in the prompt matching the tool's `specialization: sports` tag. The underlying algorithm uses a pixel-flow magnitude threshold (sensitivity × 100) rather than a relative average, making it more sensitive to sudden high-intensity bursts typical of jump events.

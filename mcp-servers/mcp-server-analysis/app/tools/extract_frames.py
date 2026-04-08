@@ -17,7 +17,7 @@ async def extract_frames(payload: dict[str, Any]) -> dict[str, Any]:
       video_url: str
       job_id: str (required)
       session_id: str (optional)
-      keyframe_index_asset: str (optional) — blob URL written by crew.py; queried from DB if absent
+      keyframe_index_asset: str (optional) — blob URL of the keyframe index JSON; falls back to DB query if absent
       frame_indices: list[int] (optional) — subset filter; all frames returned if omitted
 
     Output:

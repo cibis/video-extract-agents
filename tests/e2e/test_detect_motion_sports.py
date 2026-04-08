@@ -51,7 +51,7 @@ def test_detect_motion_sports_pipeline(tmp_path, api_gateway_url, http_client, a
         json={
             "videoId": video_id,
             "sessionId": session_id,
-            "prompt": "Extract all sports action moments, jumps, and high-intensity tricks",
+            "prompt": "Extract all segments containing jumps and high-intensity tricks",
         },
         headers=auth_headers,
     )

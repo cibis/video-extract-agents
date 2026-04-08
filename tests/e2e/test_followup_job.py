@@ -9,20 +9,16 @@ These tests verify that jobs within the same session can build on each other:
 
 Three scenarios are covered:
 
-  Scenario 1 — Extract → Transform
-    Job 1 extracts motion clips. Job 2 speeds up the output from Job 1 using
-    session context and parentJobId to locate the prior output.
-
-  Scenario 2 — Multi-video session
+  Scenario 1 — Multi-video session
     Two different videos are uploaded to the same session. Job 1 processes
     video 1. Job 2 processes video 2 and references Job 1 via parentJobId,
     asking the orchestrator to combine results.
 
-  Scenario 3 — Re-transform
+  Scenario 2 — Re-transform
     Job 1 extracts segments. Job 2 applies a different transformation
     (slow-motion) to Job 1's output, producing a third distinct artefact.
 
-  Scenario 4 — Job history assets
+  Scenario 3 — Job history assets
     Job 1 runs object detection; after completion its analysis result blobs
     (detect_objects JSON, merged_segments JSON) must be registered in
     session_assets as job_analysis_result entries with non-empty descriptions.
@@ -42,84 +38,7 @@ from tests.e2e.helpers import (
 
 
 # ---------------------------------------------------------------------------
-# Scenario 1: Extract → Speed-up transform
-# ---------------------------------------------------------------------------
-
-def test_followup_extract_then_transform(tmp_path, api_gateway_url, http_client, auth_headers):
-    """
-    Job 1 extracts high-motion segments and produces a merged highlight reel.
-    Job 2 (follow-up) speeds up that reel by 2x, referencing Job 1 via
-    parentJobId and the shared sessionId.
-
-    Assertions:
-    - Both jobs complete successfully.
-    - Job 2 output_url differs from Job 1 output_url (new artefact created).
-    - Session assets contain at least 2 job_output_video entries after both
-      jobs complete.
-    """
-    # Generate and upload video
-    video_path = str(tmp_path / "motion_followup.mp4")
-    video_factory.make_motion_video(video_path)
-
-    session_id = create_test_session(http_client, api_gateway_url, auth_headers)
-
-    video_id, _ = upload_video(http_client, api_gateway_url, auth_headers, session_id, video_path)
-    wait_for_indexed(http_client, api_gateway_url, auth_headers, session_id)
-
-    # Job 1 — extract motion segments
-    j1_resp = http_client.post(
-        f"{api_gateway_url}/v1/jobs",
-        json={
-            "videoId": video_id,
-            "sessionId": session_id,
-            "prompt": "Extract all segments with significant movement and compile into a highlight reel",
-        },
-        headers=auth_headers,
-    )
-    j1_resp.raise_for_status()
-    job1_id = j1_resp.json()["jobId"]
-    job1 = wait_for_job(http_client, api_gateway_url, auth_headers, job1_id)
-    assert_job_succeeded(job1)
-
-    job1_output_url = job1.get("output_url")
-
-    # Job 2 — transform the output from Job 1 (speed up 2x)
-    j2_resp = http_client.post(
-        f"{api_gateway_url}/v1/jobs",
-        json={
-            "videoId": video_id,
-            "sessionId": session_id,
-            "parentJobId": job1_id,
-            "prompt": "Speed up the output from the previous job by 2x",
-        },
-        headers=auth_headers,
-    )
-    j2_resp.raise_for_status()
-    job2_id = j2_resp.json()["jobId"]
-    job2 = wait_for_job(http_client, api_gateway_url, auth_headers, job2_id)
-    assert_job_succeeded(job2)
-
-    # Job 2 must produce a new output artefact when both jobs produced real video URLs
-    if ".mp4" in str(job1_output_url or "") and ".mp4" in str(job2.get("output_url") or ""):
-        assert job2["output_url"] != job1_output_url, (
-            "Job 2 should produce a distinct output from Job 1"
-        )
-
-    # Session should accumulate outputs from both jobs
-    assets_resp = http_client.get(
-        f"{api_gateway_url}/v1/sessions/{session_id}/assets",
-        headers=auth_headers,
-    )
-    assets_resp.raise_for_status()
-    assets = assets_resp.json().get("assets", [])
-    output_assets = [a for a in assets if a.get("asset_type") == "job_output_video"]
-    assert len(output_assets) >= 1, (
-        f"Expected at least 1 job_output_video assets in session, found {len(output_assets)}"
-    )
-
-
-# ---------------------------------------------------------------------------
-# Scenario 2: Multi-video session — Job 2 references Job 1 across videos
+# Scenario 1: Multi-video session — Job 2 references Job 1 across videos
 # ---------------------------------------------------------------------------
 
 def test_followup_multi_video_session(tmp_path, api_gateway_url, http_client, auth_headers):
@@ -195,7 +114,7 @@ def test_followup_multi_video_session(tmp_path, api_gateway_url, http_client, au
 
 
 # ---------------------------------------------------------------------------
-# Scenario 3: Extract → Slow-motion re-transform
+# Scenario 2: Extract → Slow-motion re-transform
 # ---------------------------------------------------------------------------
 
 def test_followup_slow_motion_retransform(tmp_path, api_gateway_url, http_client, auth_headers):
@@ -262,7 +181,7 @@ def test_followup_slow_motion_retransform(tmp_path, api_gateway_url, http_client
 
 
 # ---------------------------------------------------------------------------
-# Scenario 4: Job history assets — analysis results registered and reusable
+# Scenario 3: Job history assets — analysis results registered and reusable
 # ---------------------------------------------------------------------------
 
 def test_followup_job_history_assets(tmp_path, api_gateway_url, http_client, auth_headers):

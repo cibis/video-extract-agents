@@ -3,6 +3,19 @@ from crewai import Agent, LLM
 from crewai.utilities import I18N
 from app.config import settings
 
+# Providers with documented seed support (OpenAI and Azure OpenAI).
+# Anthropic, AWS Bedrock, and most other providers reject or ignore the
+# seed parameter — omit it for those to avoid API errors.
+_SEED_SUPPORTED_PREFIXES = ("openai/", "azure/", "gpt-", "o1", "o3", "ft:gpt-")
+_FIXED_SEED = 42
+
+
+def _seed_kwargs(model: str) -> dict[str, int]:
+    """Return {'seed': _FIXED_SEED} only for models that support it."""
+    if any(model.lower().startswith(p) for p in _SEED_SUPPORTED_PREFIXES):
+        return {"seed": _FIXED_SEED}
+    return {}
+
 
 def _make_i18n() -> I18N:
     """Return a custom I18N instance with a clearer tool-repetition guard message.
@@ -58,7 +71,7 @@ _I18N = _make_i18n()
 #     )
 
 def make_planner_agent(model: str, rpm_limit: int | None = None) -> Agent:
-    llm = LLM(model=model, temperature=0)
+    llm = LLM(model=model, temperature=0, **_seed_kwargs(model))
     return Agent(
         role="Video Extraction Planner",
         goal=(
@@ -128,7 +141,7 @@ def make_planner_agent(model: str, rpm_limit: int | None = None) -> Agent:
 
 
 def make_analysis_agent(model: str, tools: list[Any] | None = None, rpm_limit: int | None = None) -> Agent:
-    llm = LLM(model=model, temperature=0)
+    llm = LLM(model=model, temperature=0, **_seed_kwargs(model))
     return Agent(
         role="Video Analysis Agent",
         goal=(
@@ -173,7 +186,7 @@ def make_analysis_agent(model: str, tools: list[Any] | None = None, rpm_limit: i
 
 
 def make_processing_agent(model: str, tools: list[Any] | None = None, rpm_limit: int | None = None) -> Agent:
-    llm = LLM(model=model, temperature=0)
+    llm = LLM(model=model, temperature=0, **_seed_kwargs(model))
     return Agent(
         role="Video Processing Agent",
         goal=(
