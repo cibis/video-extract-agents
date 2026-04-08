@@ -1,7 +1,17 @@
 stages:
-  - sanity
+  - lint
 
-sanity-check:
-  stage: sanity
+lint:api-gateway:
+  stage: lint
+  image: node:20-alpine
   script:
-    - echo "Pipeline is working"
+    - cd backend/api-gateway
+    - npm ci
+    - npm run lint || true
+
+lint:python:
+  stage: lint
+  image: python:3.11-slim
+  script:
+    - pip install ruff
+    - ruff check backend/ || true
