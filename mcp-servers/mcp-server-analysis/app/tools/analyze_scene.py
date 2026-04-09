@@ -61,7 +61,10 @@ async def analyze_scene(
 
     prompt = _BATCH_PROMPT
     if question:
-        prompt += f"\n\nAdditional question to answer per frame: {question}"
+        prompt += (
+            f"\n\nAdditional question to answer per frame: {question}\n"
+            "- matched: boolean — true if this frame answers the question above positively, false otherwise"
+        )
 
     image_urls = [f.get("url", "") for f in frames]
     per_frame_results: list[dict] = []
@@ -125,6 +128,13 @@ async def analyze_scene(
     from collections import Counter
     top_objects = [obj for obj, _ in Counter(all_objects).most_common(10)]
 
+    matched_count: int | None = None
+    if question:
+        matched_count = sum(
+            1 for r in per_frame_results
+            if "error" not in r and r.get("matched") is True
+        )
+
     errors = [
         {
             "frame_index": r["index"],
@@ -145,6 +155,7 @@ async def analyze_scene(
         "batches": per_batch_info,
         "errors": errors,
         "frames": per_frame_results,
+        **({"matched_count": matched_count} if matched_count is not None else {}),
     }
 
     filename = f"analyze_scene_{uuid.uuid4().hex[:8]}.json"
@@ -161,6 +172,7 @@ async def analyze_scene(
         "unique_settings": sorted(settings_seen),
         "common_objects": top_objects,
         "model_used": client.model_id,
+        **({"matched_count": matched_count} if matched_count is not None else {}),
     }
 
     logger.info(

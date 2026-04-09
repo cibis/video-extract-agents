@@ -90,7 +90,16 @@ async def _get_video_duration(video_url: str) -> float:
         return 0.0
 
 
-def _kickoff_with_context(crew: Crew, inputs: dict, job_id: str, session_id: str | None, loop: asyncio.AbstractEventLoop, tool_max_retry_limit: int = 3):
+def _kickoff_with_context(
+    crew: Crew,
+    inputs: dict,
+    job_id: str,
+    session_id: str | None,
+    loop: asyncio.AbstractEventLoop,
+    tool_max_retry_limit: int = 5,
+    planner_model: str | None = None,
+    planner_rpm_limit: int | None = None,
+):
     """Run crew.kickoff() inside the executor thread with job context set for callbacks.
 
     Monkey-patches litellm.completion for the duration of the kickoff so every
@@ -99,11 +108,27 @@ def _kickoff_with_context(crew: Crew, inputs: dict, job_id: str, session_id: str
     loop is available.
 
     tool_max_retry_limit: max consecutive ToolUsageErrors per tool before the
-    task is aborted (guarded by guard_tool_usage_errors).
+    recovery mechanism fires (guarded by guard_tool_usage_errors); also the maximum
+    number of consecutive LLM calls without any successful tool use before
+    LlmCyclingLimitExceeded is raised (guarded via _thread_local cycling counters
+    in wrap_litellm_completion).
+
+    planner_model: when a tool hits tool_max_retry_limit consecutive failures, all
+    subsequent LLM calls switch to this model and all counters are reset. If the
+    limit is reached again while on the planner model, ToolRetryLimitExceeded is raised.
+
+    planner_rpm_limit: RPM cap enforced for LLM calls made in recovery mode (planner model).
+    None means unlimited.
     """
     set_job_context(job_id, session_id)
     set_loop(loop)
     _thread_local.seq_counter = new_counter()
+    _thread_local.llm_cycle_count = 0
+    _thread_local.llm_cycle_limit = tool_max_retry_limit
+    _thread_local.recovery_model = planner_model
+    _thread_local.recovery_model_active = False
+    _thread_local.planner_rpm_limit = planner_rpm_limit
+    _thread_local.recovery_call_times = None  # initialised lazily as a deque on first use
     try:
         with wrap_litellm_completion():
             with guard_tool_usage_errors(limit=tool_max_retry_limit):
@@ -112,6 +137,12 @@ def _kickoff_with_context(crew: Crew, inputs: dict, job_id: str, session_id: str
         clear_job_context()
         clear_loop()
         _thread_local.seq_counter = None
+        _thread_local.llm_cycle_count = 0
+        _thread_local.llm_cycle_limit = None
+        _thread_local.recovery_model = None
+        _thread_local.recovery_model_active = False
+        _thread_local.planner_rpm_limit = None
+        _thread_local.recovery_call_times = None
 
 
 def _step_name_from_output(step_output, agent_role: str) -> str:
@@ -289,9 +320,9 @@ async def run_crew(
     planner_model = _db_planner_model or agent_model
     _db_tool_max_retry = results[10] if not isinstance(results[10], Exception) else None
     try:
-        tool_max_retry_limit = int(_db_tool_max_retry) if _db_tool_max_retry is not None else 3
+        tool_max_retry_limit = int(_db_tool_max_retry) if _db_tool_max_retry is not None else 5
     except (ValueError, TypeError):
-        tool_max_retry_limit = 3
+        tool_max_retry_limit = 5
 
     _db_planner_rpm = results[9] if not isinstance(results[9], Exception) else None
     planner_rpm_limit: int | None
@@ -500,7 +531,7 @@ async def run_crew(
     try:
         result = await loop.run_in_executor(
             None,
-            lambda: _kickoff_with_context(crew, kickoff_inputs, job_id, session_id, loop, tool_max_retry_limit),
+            lambda: _kickoff_with_context(crew, kickoff_inputs, job_id, session_id, loop, tool_max_retry_limit, planner_model, planner_rpm_limit),
         )
     finally:
         set_mcp_job_log_queue(None)

@@ -52,17 +52,16 @@ def test_analyze_scene_pipeline(frontier_model_available, tmp_path, api_gateway_
     # 3. Wait for preprocessing
     wait_for_indexed(http_client, api_gateway_url, auth_headers, session_id)
 
-    # 4. Submit job — scene description language routes to analyze_scene
+    # 4. Submit job — explicit question drives planner to pass question= to analyze_scene
     job_resp = http_client.post(
         f"{api_gateway_url}/v1/jobs",
         json={
             "videoId": video_id,
             "sessionId": session_id,
             "prompt": (
-                "Extract the segments containing vertical color bars."
-                "Use visual scene analysis to ask if the scene contains color bars. "
-                "Do not use any detect_* tools — use analyze_scene  to understand the visual content. "
-                
+                "Extract the segments containing vertical color bars. "
+                "Use analyze_scene with the question 'Does this frame contain vertical color bars?' "
+                "to identify matching frames. Do not use any detect_* tools."
             ),
         },
         headers=auth_headers,
@@ -79,4 +78,23 @@ def test_analyze_scene_pipeline(frontier_model_available, tmp_path, api_gateway_
     # 7. Assert scene analysis tool was invoked
     assert_tool_invoked(
         http_client, api_gateway_url, auth_headers, job_id, "analyze_scene"
+    )
+
+    # 8. Verify matched_count is present in the analyze_scene summary logged for this job.
+    #    When analyze_scene is called with a question, the summary includes matched_count.
+    logs_resp = http_client.get(
+        f"{api_gateway_url}/v1/jobs/{job_id}/logs",
+        headers=auth_headers,
+    )
+    logs_resp.raise_for_status()
+    logs = logs_resp.json().get("logs", [])
+    scene_logs = [
+        log for log in logs
+        if log.get("tool_name") == "analyze_scene" and log.get("message")
+    ]
+    assert any(
+        "matched_count" in (log.get("message") or "") for log in scene_logs
+    ), (
+        "Expected analyze_scene summary to contain matched_count when question is provided. "
+        f"analyze_scene log messages: {[log.get('message') for log in scene_logs]}"
     )

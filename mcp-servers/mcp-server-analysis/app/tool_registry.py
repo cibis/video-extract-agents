@@ -477,6 +477,9 @@ TOOLS: dict[str, dict] = {
             "Use a Claude vision model to semantically describe scenes across multiple video frames. "
             "Returns structured per-frame descriptions (activities, objects, setting, mood) "
             "as a result_asset blob + compact summary. "
+            "When the optional 'question' parameter is provided, each frame also includes "
+            "a 'matched' boolean (true = frame answers the question positively) and the "
+            "summary includes 'matched_count'. "
             "FRONTIER TOOL — incurs API cost per batch. "
             "Use only when YOLO-style detection is insufficient. "
             "Sample frames sparingly before running on all frames."
@@ -524,9 +527,13 @@ TOOLS: dict[str, dict] = {
                         "errors (array — per-frame errors: frame_index, timestamp_seconds, "
                         "error_type ('no_response'|'no_url'), error_detail, traceback), "
                         "frames (array — per-frame results: index, timestamp_seconds, "
-                        "description, objects, activities, setting, mood). "
-                        "Use query_asset with a JSONPath such as '$.frames[*]' or "
-                        "'$.frames[?(@.setting == \"outdoor\")]' to read specific values."
+                        "description, objects, activities, setting, mood; "
+                        "matched (boolean, present when a question was provided — "
+                        "true if the frame answers the question positively, false otherwise)). "
+                        "When question was provided, the blob also contains matched_count (int). "
+                        "Use query_asset with '$.frames[?(@.matched == true)]' to retrieve only "
+                        "matching frames for downstream clip extraction, or '$.frames[*]' / "
+                        "'$.frames[?(@.setting == \"outdoor\")]' for other filtering."
                     ),
                 },
                 "summary": {

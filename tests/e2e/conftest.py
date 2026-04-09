@@ -46,6 +46,19 @@ def auth_headers() -> dict:
     return {"Authorization": "Bearer local-dev-skip-auth"}
 
 
+# ── Test data wipe ───────────────────────────────────────────────────────────
+
+@pytest.fixture(scope="session", autouse=True)
+def wipe_test_data() -> None:
+    """Delete all test sessions and their blobs before the suite runs."""
+    with httpx.Client(timeout=30.0) as client:
+        resp = client.delete(
+            f"{API_GATEWAY_URL}/v1/admin/wipe-test-data",
+            headers={"Authorization": "Bearer local-dev-skip-auth"},
+        )
+        resp.raise_for_status()
+
+
 # ── Frontier model availability ──────────────────────────────────────────────
 
 def _resolve_frontier_model() -> str:

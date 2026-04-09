@@ -5,7 +5,7 @@
 "planner_agent_model"	"anthropic/claude-haiku-4-5-20251001"
 "planner_agent_rpm_limit"	"2"
 "tool_frontier_model"	"bedrock/us.amazon.nova-2-lite-v1:0"
-"tool_max_retry_limit"	"10"
+"tool_max_retry_limit"	"5"
 "tool_rpm_limit"	"16"
 
 ```

@@ -20,6 +20,7 @@ instead of being queued.  The queue acts as a fallback if no loop is set.
 from __future__ import annotations
 
 import asyncio
+import collections
 import json
 import logging
 import queue
@@ -52,13 +53,14 @@ def _patch_crewai_parser() -> None:
     _orig = _parser._safe_repair_json
 
     def _patched(tool_input: str) -> str:
-        obs_idx = tool_input.find("\nObservation:")
-        if obs_idx != -1:
-            tool_input = tool_input[:obs_idx]
+        for sentinel in ("\nObservation:", "\nAction:"):
+            idx = tool_input.find(sentinel)
+            if idx != -1:
+                tool_input = tool_input[:idx]
         return _orig(tool_input)
 
     _parser._safe_repair_json = _patched
-    logger.debug("_patch_crewai_parser: _safe_repair_json patched to strip \\nObservation: suffix")
+    logger.debug("_patch_crewai_parser: _safe_repair_json patched to strip \\nObservation: and \\nAction: suffixes")
 
 
 _patch_crewai_parser()
@@ -66,6 +68,10 @@ _patch_crewai_parser()
 
 class ToolRetryLimitExceeded(Exception):
     """Raised when a tool exceeds tool_max_retry_limit consecutive ToolUsageErrors."""
+
+
+class LlmCyclingLimitExceeded(Exception):
+    """Raised when tool_max_retry_limit consecutive LLM calls produce no successful tool use."""
 
 
 def _is_failed_tool_result(calling, result: str) -> bool:
@@ -132,19 +138,37 @@ def guard_tool_usage_errors(limit: int) -> Generator[None, None, None]:
 
         if _is_failed_tool_result(calling, result):
             _counts[tool_name] = _counts.get(tool_name, 0) + 1
+            in_recovery = getattr(_thread_local, "recovery_model_active", False)
             logger.warning(
-                "guard_tool_usage_errors: tool '%s' failure %d/%d — %s",
-                tool_name, _counts[tool_name], limit, str(result)[:200],
+                "guard_tool_usage_errors: tool '%s' failure %d/%d%s — %s",
+                tool_name, _counts[tool_name], limit,
+                " [recovery model]" if in_recovery else "",
+                str(result)[:200],
             )
             if _counts[tool_name] >= limit:
-                raise ToolRetryLimitExceeded(
-                    f"Tool '{tool_name}' failed {_counts[tool_name]} consecutive "
-                    f"times (limit: {limit}). Last error: {result}"
+                if in_recovery:
+                    # Already on planner model and still hitting the limit → abort
+                    raise ToolRetryLimitExceeded(
+                        f"Tool '{tool_name}' failed {_counts[tool_name]} consecutive "
+                        f"times with planner model (limit: {limit}). Last error: {result}"
+                    )
+                # First time hitting limit: switch to planner model and reset counters
+                _thread_local.recovery_model_active = True
+                _counts.clear()
+                if hasattr(_thread_local, "llm_cycle_count"):
+                    _thread_local.llm_cycle_count = 0
+                logger.info(
+                    "guard_tool_usage_errors: tool '%s' hit retry limit (%d) — "
+                    "switching to planner model and resetting counters",
+                    tool_name, limit,
                 )
         else:
             if tool_name in _counts:
                 logger.debug("guard_tool_usage_errors: tool '%s' succeeded — resetting counter", tool_name)
-            _counts.pop(tool_name, None)  # reset on successful call
+            _counts.pop(tool_name, None)  # reset per-tool counter on successful call
+            # Reset global LLM cycling counter — a tool succeeded
+            if hasattr(_thread_local, "llm_cycle_count"):
+                _thread_local.llm_cycle_count = 0
 
         return result
 
@@ -224,6 +248,31 @@ def wrap_litellm_completion() -> Generator[None, None, None]:
     _original = _litellm.completion
 
     def _record_completion(*args, **kwargs):
+        # Recovery mechanism: when guard_tool_usage_errors activates recovery mode,
+        # override the model with the planner model for all subsequent LLM calls
+        # and enforce the planner_rpm_limit using a sliding 60-second window.
+        if getattr(_thread_local, "recovery_model_active", False):
+            _recovery_model = getattr(_thread_local, "recovery_model", None)
+            if _recovery_model:
+                kwargs["model"] = _recovery_model
+            _rpm_limit = getattr(_thread_local, "planner_rpm_limit", None)
+            if _rpm_limit:
+                if getattr(_thread_local, "recovery_call_times", None) is None:
+                    _thread_local.recovery_call_times = collections.deque()
+                _call_times = _thread_local.recovery_call_times
+                _now = time.monotonic()
+                while _call_times and _call_times[0] < _now - 60.0:
+                    _call_times.popleft()
+                if len(_call_times) >= _rpm_limit:
+                    _sleep = 60.0 - (_now - _call_times[0]) + 0.05
+                    if _sleep > 0:
+                        logger.debug(
+                            "_record_completion: recovery RPM limit (%d) — sleeping %.1f s",
+                            _rpm_limit, _sleep,
+                        )
+                        time.sleep(_sleep)
+                _thread_local.recovery_call_times.append(time.monotonic())
+
         # Defensive guard: Anthropic rejects requests whose messages array ends
         # with role=assistant ("assistant message prefill"). This can happen when
         # CrewAI's ReAct retry logic fails to append a closing user message after
@@ -378,6 +427,24 @@ def wrap_litellm_completion() -> Generator[None, None, None]:
                     })
             except Exception:
                 logger.exception("wrap_litellm_completion: failed to queue log entry — ignoring")
+
+            # Cycling guard: count consecutive successful LLM calls without a tool success.
+            # Raised after logging so the LLM call is still recorded before we abort.
+            if exc is None:
+                llm_cycle_limit = getattr(_thread_local, "llm_cycle_limit", None)
+                if llm_cycle_limit is not None:
+                    _thread_local.llm_cycle_count = getattr(_thread_local, "llm_cycle_count", 0) + 1
+                    _count = _thread_local.llm_cycle_count
+                    if _count > llm_cycle_limit:
+                        logger.warning(
+                            "_record_completion: LLM cycling limit hit — %d consecutive LLM calls "
+                            "without a successful tool use (limit: %d)",
+                            _count, llm_cycle_limit,
+                        )
+                        raise LlmCyclingLimitExceeded(
+                            f"{_count} consecutive LLM calls without a successful tool use "
+                            f"(limit: {llm_cycle_limit})."
+                        )
 
     _litellm.completion = _record_completion
     try:
