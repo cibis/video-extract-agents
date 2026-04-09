@@ -1,6 +1,4 @@
 """Azure Blob Storage: download video, upload keyframes."""
-import os
-from pathlib import Path
 from azure.storage.blob.aio import BlobServiceClient
 from app.config import settings
 

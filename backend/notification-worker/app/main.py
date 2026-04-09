@@ -34,8 +34,8 @@ _handler.setFormatter(_PrettyJsonFormatter(
     datefmt="%Y-%m-%dT%H:%M:%S",
 ))
 logging.basicConfig(level=settings.log_level.upper(), handlers=[_handler])
-from fastapi import FastAPI
-from app.consumer import run_consumer
+from fastapi import FastAPI  # noqa: E402
+from app.consumer import run_consumer  # noqa: E402
 
 logger = logging.getLogger(__name__)
 

@@ -1,9 +1,7 @@
 """FFmpeg + OpenCV keyframe extraction pipeline."""
 import asyncio
 import logging
-import os
 import re
-import tempfile
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -98,9 +96,7 @@ async def extract_keyframes(
     )
     _, stderr = await proc.communicate()
 
-    fallback_used = False
     if proc.returncode != 0:
-        fallback_used = True
         timestamps = []  # showinfo timestamps don't apply to the fallback filter
         cmd_fallback = [
             "ffmpeg", "-i", video_path,

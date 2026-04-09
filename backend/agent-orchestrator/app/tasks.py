@@ -1,4 +1,3 @@
-import json
 from crewai import Task
 from crewai import Agent
 from typing import Any

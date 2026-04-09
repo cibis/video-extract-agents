@@ -32,8 +32,8 @@ _handler.setFormatter(_PrettyJsonFormatter(
 ))
 logging.basicConfig(level=settings.log_level.upper(), handlers=[_handler])
 
-from fastapi import FastAPI
-from app.router import router
+from fastapi import FastAPI  # noqa: E402
+from app.router import router  # noqa: E402
 
 app = FastAPI(title="MCP Analysis Server", version="1.0.0")
 

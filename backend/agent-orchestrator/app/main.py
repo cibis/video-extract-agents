@@ -46,9 +46,9 @@ _handler.setFormatter(_PrettyJsonFormatter(
 ))
 logging.basicConfig(level=settings.log_level.upper(), handlers=[_handler])
 
-from fastapi import FastAPI
-from app.server import router as run_router
-from app.consumer import run_consumer
+from fastapi import FastAPI  # noqa: E402
+from app.server import router as run_router  # noqa: E402
+from app.consumer import run_consumer  # noqa: E402
 
 _logger = logging.getLogger(__name__)
 

@@ -205,7 +205,6 @@ async def estimate_height_above_surface(
     in_event = False
     event_start_ts = 0.0
     peak_in_event = 0.0
-    peak_frame_in_event = 0
 
     for i, rec in enumerate(frame_records):
         airborne = rec["height_m"] > effective_threshold_m
@@ -213,11 +212,9 @@ async def estimate_height_above_surface(
             in_event = True
             event_start_ts = rec["timestamp_seconds"]
             peak_in_event = rec["height_m"]
-            peak_frame_in_event = i
         elif in_event:
             if rec["height_m"] > peak_in_event:
                 peak_in_event = rec["height_m"]
-                peak_frame_in_event = i
             if not airborne:
                 in_event = False
                 events.append({
