@@ -20,6 +20,7 @@ variables:
   DOCKER_DRIVER: overlay2
   DOCKER_TLS_CERTDIR: "/certs"
   ACR_REGISTRY: ${ACR_REGISTRY}
+  ACR_PASSWORD: ${ACR_PASSWORD}
   IMAGE_TAG: ${CI_COMMIT_SHORT_SHA}
   TF_DIR: infrastructure/terraform/envs/test
   COMPOSE_FILE: infrastructure/docker-compose/docker-compose.yml
