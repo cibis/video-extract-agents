@@ -31,6 +31,7 @@ variables:
 .docker-login: &docker-login
   before_script:
     - echo "ACR_REGISTRY raw = [$ACR_REGISTRY]"
+    - echo $ACR_REGISTRY
     - env | grep ACR || true
     - export CLEAN_ACR=$(echo "$ACR_REGISTRY" | sed 's#https://##' | sed 's#/$##')
     - echo $CLEAN_ACR  
