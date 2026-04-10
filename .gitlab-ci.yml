@@ -18,7 +18,8 @@ stages:
 
 variables:
   DOCKER_DRIVER: overlay2
-  DOCKER_TLS_CERTDIR: "/certs"
+  # DOCKER_TLS_CERTDIR: "/certs"
+  DOCKER_TLS_CERTDIR: ""
   IMAGE_TAG: ${CI_COMMIT_SHORT_SHA}
   TF_DIR: infrastructure/terraform/envs/test
   COMPOSE_FILE: infrastructure/docker-compose/docker-compose.yml
@@ -29,6 +30,7 @@ variables:
 
 .docker-login: &docker-login
   before_script:
+    - docker system prune -af || true  
     - env | grep ACR || true  
     - echo "$ACR_PASSWORD" | docker login "$ACR_REGISTRY" -u "$ACR_USERNAME" --password-stdin
 
