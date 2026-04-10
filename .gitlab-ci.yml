@@ -18,8 +18,9 @@ stages:
 
 variables:
   DOCKER_DRIVER: overlay2
-  # DOCKER_TLS_CERTDIR: "/certs"
-  DOCKER_TLS_CERTDIR: ""
+  DOCKER_TLS_CERTDIR: "/certs"
+  DOCKER_BUILDKIT: "1"
+  BUILDX_NO_DEFAULT_ATTESTATIONS: "1"
   IMAGE_TAG: ${CI_COMMIT_SHORT_SHA}
   TF_DIR: infrastructure/terraform/envs/test
   COMPOSE_FILE: infrastructure/docker-compose/docker-compose.yml
@@ -30,8 +31,8 @@ variables:
 
 .docker-login: &docker-login
   before_script:
-    - docker system prune -af || true  
-    - env | grep ACR || true  
+    - docker system prune -af || true
+    - env | grep ACR || true
     - echo "$ACR_PASSWORD" | docker login "$ACR_REGISTRY" -u "$ACR_USERNAME" --password-stdin
 
 .azure-login: &azure-login
@@ -96,50 +97,107 @@ lint:python:
 build:api-gateway:
   <<: *build-image
   script:
-    - docker build -t "$ACR_REGISTRY/api-gateway:$IMAGE_TAG" backend/api-gateway/
+    - |
+      docker build \
+        --build-arg BUILDKIT_INLINE_CACHE=1 \
+        --cache-from "$ACR_REGISTRY/api-gateway:buildcache" \
+        -t "$ACR_REGISTRY/api-gateway:$IMAGE_TAG" \
+        backend/api-gateway/
     - docker push "$ACR_REGISTRY/api-gateway:$IMAGE_TAG"
+    - docker tag "$ACR_REGISTRY/api-gateway:$IMAGE_TAG" "$ACR_REGISTRY/api-gateway:buildcache"
+    - docker push "$ACR_REGISTRY/api-gateway:buildcache" || true
 
 build:agent-orchestrator:
   <<: *build-image
   script:
-    - docker build -t "$ACR_REGISTRY/agent-orchestrator:$IMAGE_TAG" backend/agent-orchestrator/
+    - |
+      docker build \
+        --build-arg BUILDKIT_INLINE_CACHE=1 \
+        --cache-from "$ACR_REGISTRY/agent-orchestrator:buildcache" \
+        -t "$ACR_REGISTRY/agent-orchestrator:$IMAGE_TAG" \
+        backend/agent-orchestrator/
     - docker push "$ACR_REGISTRY/agent-orchestrator:$IMAGE_TAG"
+    - docker tag "$ACR_REGISTRY/agent-orchestrator:$IMAGE_TAG" "$ACR_REGISTRY/agent-orchestrator:buildcache"
+    - docker push "$ACR_REGISTRY/agent-orchestrator:buildcache" || true
 
 build:preprocessing-worker:
   <<: *build-image
   script:
-    - docker build -t "$ACR_REGISTRY/preprocessing-worker:$IMAGE_TAG" backend/preprocessing-worker/
+    - |
+      docker build \
+        --build-arg BUILDKIT_INLINE_CACHE=1 \
+        --cache-from "$ACR_REGISTRY/preprocessing-worker:buildcache" \
+        -t "$ACR_REGISTRY/preprocessing-worker:$IMAGE_TAG" \
+        backend/preprocessing-worker/
     - docker push "$ACR_REGISTRY/preprocessing-worker:$IMAGE_TAG"
+    - docker tag "$ACR_REGISTRY/preprocessing-worker:$IMAGE_TAG" "$ACR_REGISTRY/preprocessing-worker:buildcache"
+    - docker push "$ACR_REGISTRY/preprocessing-worker:buildcache" || true
 
 build:notification-worker:
   <<: *build-image
   script:
-    - docker build -t "$ACR_REGISTRY/notification-worker:$IMAGE_TAG" backend/notification-worker/
+    - |
+      docker build \
+        --build-arg BUILDKIT_INLINE_CACHE=1 \
+        --cache-from "$ACR_REGISTRY/notification-worker:buildcache" \
+        -t "$ACR_REGISTRY/notification-worker:$IMAGE_TAG" \
+        backend/notification-worker/
     - docker push "$ACR_REGISTRY/notification-worker:$IMAGE_TAG"
+    - docker tag "$ACR_REGISTRY/notification-worker:$IMAGE_TAG" "$ACR_REGISTRY/notification-worker:buildcache"
+    - docker push "$ACR_REGISTRY/notification-worker:buildcache" || true
 
 build:mcp-server-analysis:
   <<: *build-image
   script:
-    - docker build --pull --no-cache -t "$ACR_REGISTRY/mcp-server-analysis:$IMAGE_TAG" mcp-servers/mcp-server-analysis/
+    - |
+      docker build \
+        --build-arg BUILDKIT_INLINE_CACHE=1 \
+        --build-arg PRELOAD_MODELS=false \
+        --cache-from "$ACR_REGISTRY/mcp-server-analysis:buildcache" \
+        -t "$ACR_REGISTRY/mcp-server-analysis:$IMAGE_TAG" \
+        mcp-servers/mcp-server-analysis/
     - docker push "$ACR_REGISTRY/mcp-server-analysis:$IMAGE_TAG"
+    - docker tag "$ACR_REGISTRY/mcp-server-analysis:$IMAGE_TAG" "$ACR_REGISTRY/mcp-server-analysis:buildcache"
+    - docker push "$ACR_REGISTRY/mcp-server-analysis:buildcache" || true
 
 build:mcp-server-processing:
   <<: *build-image
   script:
-    - docker build -t "$ACR_REGISTRY/mcp-server-processing:$IMAGE_TAG" mcp-servers/mcp-server-processing/
+    - |
+      docker build \
+        --build-arg BUILDKIT_INLINE_CACHE=1 \
+        --cache-from "$ACR_REGISTRY/mcp-server-processing:buildcache" \
+        -t "$ACR_REGISTRY/mcp-server-processing:$IMAGE_TAG" \
+        mcp-servers/mcp-server-processing/
     - docker push "$ACR_REGISTRY/mcp-server-processing:$IMAGE_TAG"
+    - docker tag "$ACR_REGISTRY/mcp-server-processing:$IMAGE_TAG" "$ACR_REGISTRY/mcp-server-processing:buildcache"
+    - docker push "$ACR_REGISTRY/mcp-server-processing:buildcache" || true
 
 build:angular-shell:
   <<: *build-image
   script:
-    - docker build -t "$ACR_REGISTRY/angular-shell:$IMAGE_TAG" frontend/angular-shell/
+    - |
+      docker build \
+        --build-arg BUILDKIT_INLINE_CACHE=1 \
+        --cache-from "$ACR_REGISTRY/angular-shell:buildcache" \
+        -t "$ACR_REGISTRY/angular-shell:$IMAGE_TAG" \
+        frontend/angular-shell/
     - docker push "$ACR_REGISTRY/angular-shell:$IMAGE_TAG"
+    - docker tag "$ACR_REGISTRY/angular-shell:$IMAGE_TAG" "$ACR_REGISTRY/angular-shell:buildcache"
+    - docker push "$ACR_REGISTRY/angular-shell:buildcache" || true
 
 build:librechat:
   <<: *build-image
   script:
-    - docker build -t "$ACR_REGISTRY/librechat:$IMAGE_TAG" frontend/librechat/
+    - |
+      docker build \
+        --build-arg BUILDKIT_INLINE_CACHE=1 \
+        --cache-from "$ACR_REGISTRY/librechat:buildcache" \
+        -t "$ACR_REGISTRY/librechat:$IMAGE_TAG" \
+        frontend/librechat/
     - docker push "$ACR_REGISTRY/librechat:$IMAGE_TAG"
+    - docker tag "$ACR_REGISTRY/librechat:$IMAGE_TAG" "$ACR_REGISTRY/librechat:buildcache"
+    - docker push "$ACR_REGISTRY/librechat:buildcache" || true
 
 # ──────────────────────────────────────────────────────────────────────────────
 # ACA TEST ENVIRONMENT
