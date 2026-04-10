@@ -120,7 +120,7 @@ build:notification-worker:
 build:mcp-server-analysis:
   <<: *build-image
   script:
-    - docker build -t "$ACR_REGISTRY/mcp-server-analysis:$IMAGE_TAG" mcp-servers/mcp-server-analysis/
+    - docker build --pull --no-cache -t "$ACR_REGISTRY/mcp-server-analysis:$IMAGE_TAG" mcp-servers/mcp-server-analysis/
     - docker push "$ACR_REGISTRY/mcp-server-analysis:$IMAGE_TAG"
 
 build:mcp-server-processing:
