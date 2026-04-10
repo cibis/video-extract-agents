@@ -3,6 +3,7 @@
 # Stages: lint → build_images → aca_test_env_create → deploy_test_services →
 #         e2e_tests → aca_test_env_destroy → push_to_acr → deploy_dev →
 #         manual_approval → deploy_prod
+# 
 
 stages:
   - lint
