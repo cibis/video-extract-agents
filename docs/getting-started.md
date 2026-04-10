@@ -212,9 +212,8 @@ This creates:
 - Resource group `video-extract-dev`
 - Azure Container Registry (Basic SKU for dev)
 - Azure Container Apps environment + Log Analytics workspace
-- All 8 container apps (api-gateway, agent-orchestrator, preprocessing-worker, notification-worker, mcp-server-analysis, mcp-server-processing, angular-frontend, librechat)
-- PostgreSQL flexible server
-- Blob Storage account (1 container: `videos`)
+- All 9 container apps (postgresql, api-gateway, agent-orchestrator, preprocessing-worker, notification-worker, mcp-server-analysis, mcp-server-processing, angular-frontend, librechat)
+- Blob Storage account (1 container: `videos`; Azure Files share for PostgreSQL persistence)
 - Service Bus namespace (5 queues)
 - Application Insights
 - Azure Front Door (Standard)
@@ -409,14 +408,24 @@ terraform apply -var="image_tag=$IMAGE_TAG"
 
 ### 11.3 Initialise the Azure database
 
-```bash
-# Get the connection string from Terraform output
-DB_URL=$(terraform output -raw connection_url_asyncpg)
+The PostgreSQL container starts empty on first deploy. Run `init_db.py` once to create all tables.
 
-export DATABASE_URL=$DB_URL
-python scripts/init_db.py
+```bash
+# Exec into the postgresql container app to confirm it is running
+az containerapp exec \
+  --name postgresql \
+  --resource-group video-extract-dev \
+  --command "psql -U psqladmin -d videoextract -c '\dt'"
+
+# Run init_db.py from a machine that has network access to the ACA environment,
+# or from a one-off az containerapp exec session:
+DB_PASS=$(cd infrastructure/terraform/envs/dev && terraform output -raw db_admin_password 2>/dev/null)
+DATABASE_URL="postgresql://psqladmin:${DB_PASS}@<postgresql-internal-fqdn>:5432/videoextract" \
+  python scripts/init_db.py
 python scripts/create_service_bus_queues.py
 ```
+
+> The internal FQDN for the `postgresql` container app is shown in the Azure portal under the ACA environment → Apps → postgresql → Overview. Other services inside the same environment reach it simply as `postgresql:5432`.
 
 ### 11.4 Subsequent deploys via CI
 

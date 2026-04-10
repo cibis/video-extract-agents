@@ -14,3 +14,8 @@ output "primary_connection_string" {
 output "container_name" {
   value = azurerm_storage_container.videos.name
 }
+
+output "primary_access_key" {
+  value     = azurerm_storage_account.main.primary_access_key
+  sensitive = true
+}

@@ -43,7 +43,33 @@ variable "storage_connection_string" {
   sensitive = true
 }
 
-variable "database_url" {
+variable "db_admin_username" {
+  type    = string
+  default = "psqladmin"
+}
+
+variable "db_admin_password" {
+  type      = string
+  sensitive = true
+}
+
+variable "db_storage_gb" {
+  type        = number
+  default     = 32
+  description = "Azure Files share quota in GB for PostgreSQL data"
+}
+
+variable "storage_account_id" {
+  type        = string
+  description = "Resource ID of the storage account used for Azure Files (PostgreSQL volume)"
+}
+
+variable "storage_account_name" {
+  type        = string
+  description = "Name of the storage account used for Azure Files (PostgreSQL volume)"
+}
+
+variable "storage_account_key" {
   type      = string
   sensitive = true
 }

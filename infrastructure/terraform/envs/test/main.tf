@@ -41,15 +41,6 @@ module "storage" {
   tags                = local.tags
 }
 
-module "database" {
-  source              = "../../modules/database"
-  resource_group_name = azurerm_resource_group.main.name
-  location            = var.location
-  environment         = "test${var.pipeline_id}"
-  sku_name            = "Standard_B1ms"
-  admin_password      = var.db_admin_password
-  tags                = local.tags
-}
 
 resource "azurerm_servicebus_namespace" "main" {
   name                = "ve-test-${var.pipeline_id}-sb"
@@ -95,7 +86,10 @@ module "aca" {
   service_bus_namespace         = azurerm_servicebus_namespace.main.name
   service_bus_connection_string = azurerm_servicebus_namespace.main.default_primary_connection_string
   storage_connection_string     = module.storage.primary_connection_string
-  database_url                  = module.database.connection_string
+  db_admin_password             = var.db_admin_password
+  storage_account_id            = module.storage.storage_account_id
+  storage_account_name          = module.storage.storage_account_name
+  storage_account_key           = module.storage.primary_access_key
   agent_model                   = var.agent_model
   tool_frontier_model           = var.tool_frontier_model
   model_aliases_override        = var.model_aliases_override

@@ -27,7 +27,7 @@ Users upload video files and describe what they want extracted in plain English 
 | Infrastructure as Code | Terraform (azurerm ~4.0) |
 | Local dev emulation | Docker Compose + Azurite |
 | Storage | Azure Blob Storage |
-| Database | Azure PostgreSQL (asyncpg + SQLAlchemy async) |
+| Database | PostgreSQL 15 (ACA container, Azure Files backed) |
 | Messaging | Azure Service Bus |
 | Authentication | Azure Entra External ID (magic link / JWT) |
 | Email | Azure Communication Services |
@@ -254,7 +254,7 @@ Project fork of LibreChat. Upstream changes are merged periodically. All project
 | **Anthropic API** | Claude model for agent reasoning + frontier vision tools | agent-orchestrator, mcp-server-analysis |
 | **Azure Blob Storage** | Video storage (uploads, keyframes, segments, outputs) | all services |
 | **Azure Service Bus** | Async event bus (5 queues) | all backend services |
-| **Azure PostgreSQL** | Metadata (users, videos, jobs, keyframe index) | api-gateway (Node.js), agent-orchestrator, preprocessing-worker, notification-worker |
+| **PostgreSQL 15** | Metadata (users, videos, jobs, keyframe index) — ACA container, Azure Files backed | api-gateway (Node.js), agent-orchestrator, preprocessing-worker, notification-worker |
 | **Azure Entra External ID** | Magic link auth + JWT issuance | api-gateway — Node.js middleware validates JWT |
 | **Azure Communication Services** | Transactional email (job results) | notification-worker |
 | **Azure Front Door** | CDN + signed URL delivery for output videos | api-gateway, notification-worker |
@@ -493,7 +493,7 @@ graph TD
 
     subgraph State["State & Messaging"]
         BLOB["Azure Blob Storage\nvideos / keyframes / segments / outputs"]
-        PG["Azure PostgreSQL\nusers · videos · jobs · keyframe_index"]
+        PG["PostgreSQL 15 (ACA container)\nusers · videos · jobs · keyframe_index"]
         SB["Azure Service Bus\nVIDEO_UPLOADED → VIDEO_INDEXED\nJOB_QUEUED → JOB_COMPLETED / JOB_FAILED"]
     end
 
@@ -655,11 +655,12 @@ graph TD
                 NW["notification-worker"]
             end
 
+            PG["PostgreSQL 15\n(container, min_replicas=1)\nAzure Files volume"]
+
         end
 
         subgraph ManagedServices["Managed Services"]
-            BLOB["Azure Blob Storage"]
-            PG["Azure PostgreSQL"]
+            BLOB["Azure Blob Storage\n(+ Azure Files for PostgreSQL)"]
             SB["Azure Service Bus"]
             ENTRA["Azure Entra External ID\n(magic link / JWT)"]
             ACS["Azure Communication Services"]

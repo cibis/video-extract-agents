@@ -1,3 +1,103 @@
+locals {
+  database_url_asyncpg = "postgresql+asyncpg://${var.db_admin_username}:${var.db_admin_password}@postgresql:5432/videoextract"
+  database_url_pg      = "postgresql://${var.db_admin_username}:${var.db_admin_password}@postgresql:5432/videoextract"
+}
+
+# ─── PostgreSQL (container) ───────────────────────────────────────────────────
+
+resource "azurerm_storage_share" "postgres_data" {
+  name               = "postgres-data"
+  storage_account_id = var.storage_account_id
+  quota              = var.db_storage_gb
+}
+
+resource "azurerm_container_app_environment_storage" "postgres_data" {
+  name                         = "postgres-data"
+  container_app_environment_id = azurerm_container_app_environment.main.id
+  account_name                 = var.storage_account_name
+  share_name                   = azurerm_storage_share.postgres_data.name
+  access_key                   = var.storage_account_key
+  access_mode                  = "ReadWrite"
+}
+
+resource "azurerm_container_app" "postgresql" {
+  name                         = "postgresql"
+  container_app_environment_id = azurerm_container_app_environment.main.id
+  resource_group_name          = var.resource_group_name
+  revision_mode                = "Single"
+  tags                         = var.tags
+
+  template {
+    min_replicas = 1
+    max_replicas = 1
+
+    container {
+      name   = "postgresql"
+      image  = "postgres:15-alpine"
+      cpu    = 0.5
+      memory = "1Gi"
+
+      env {
+        name  = "POSTGRES_USER"
+        value = var.db_admin_username
+      }
+      env {
+        name  = "POSTGRES_DB"
+        value = "videoextract"
+      }
+      env {
+        name        = "POSTGRES_PASSWORD"
+        secret_name = "db-admin-password"
+      }
+      # PGDATA must be a subdirectory of the Azure Files mount — Azure Files
+      # creates a lost+found dir at the root which prevents postgres startup.
+      env {
+        name  = "PGDATA"
+        value = "/var/lib/postgresql/data/pgdata"
+      }
+
+      volume_mounts {
+        name = "postgres-data"
+        path = "/var/lib/postgresql/data"
+      }
+
+      liveness_probe {
+        transport = "TCP"
+        port      = 5432
+      }
+      readiness_probe {
+        transport = "TCP"
+        port      = 5432
+      }
+    }
+
+    volume {
+      name         = "postgres-data"
+      storage_type = "AzureFile"
+      storage_name = azurerm_container_app_environment_storage.postgres_data.name
+    }
+  }
+
+  secret {
+    name  = "db-admin-password"
+    value = var.db_admin_password
+  }
+
+  ingress {
+    external_enabled = false
+    target_port      = 5432
+    transport        = "tcp"
+    traffic_weight {
+      latest_revision = true
+      percentage      = 100
+    }
+  }
+
+  depends_on = [azurerm_container_app_environment_storage.postgres_data]
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+
 resource "azurerm_log_analytics_workspace" "main" {
   name                = "videoextract-${var.environment}-law"
   resource_group_name = var.resource_group_name
@@ -47,7 +147,7 @@ resource "azurerm_container_app" "api_gateway" {
 
       env {
         name  = "DATABASE_URL"
-        value = replace(var.database_url, "+asyncpg", "")
+        value = local.database_url_pg
       }
       env {
         name  = "AZURE_STORAGE_CONNECTION_STRING"
@@ -97,6 +197,8 @@ resource "azurerm_container_app" "api_gateway" {
       latest_revision = true
     }
   }
+
+  depends_on = [azurerm_container_app.postgresql]
 }
 
 # ─── Agent Orchestrator ───────────────────────────────────────────────────────
@@ -131,7 +233,7 @@ resource "azurerm_container_app" "agent_orchestrator" {
 
       env {
         name  = "DATABASE_URL"
-        value = var.database_url
+        value = local.database_url_asyncpg
       }
       env {
         name  = "AZURE_STORAGE_CONNECTION_STRING"
@@ -198,6 +300,8 @@ resource "azurerm_container_app" "agent_orchestrator" {
       latest_revision = true
     }
   }
+
+  depends_on = [azurerm_container_app.postgresql]
 }
 
 # ─── MCP Server Analysis ──────────────────────────────────────────────────────
@@ -377,7 +481,7 @@ resource "azurerm_container_app" "preprocessing_worker" {
 
       env {
         name  = "DATABASE_URL"
-        value = var.database_url
+        value = local.database_url_asyncpg
       }
       env {
         name  = "AZURE_STORAGE_CONNECTION_STRING"
@@ -403,6 +507,8 @@ resource "azurerm_container_app" "preprocessing_worker" {
       }
     }
   }
+
+  depends_on = [azurerm_container_app.postgresql]
 }
 
 # ─── Notification Worker ──────────────────────────────────────────────────────
@@ -437,7 +543,7 @@ resource "azurerm_container_app" "notification_worker" {
 
       env {
         name  = "DATABASE_URL"
-        value = var.database_url
+        value = local.database_url_asyncpg
       }
       env {
         name  = "AZURE_SERVICE_BUS_CONNECTION_STRING"
@@ -471,6 +577,8 @@ resource "azurerm_container_app" "notification_worker" {
       }
     }
   }
+
+  depends_on = [azurerm_container_app.postgresql]
 }
 
 # ─── Angular Frontend ─────────────────────────────────────────────────────────

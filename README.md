@@ -77,6 +77,42 @@ All steps are asynchronous and fault-tolerant via Azure Service Bus queues.
 
 ---
 
+## External Agents
+
+The platform's MCP tools can be used directly from Claude Desktop or the LibreChat official image via an MCP bridge (port 8300) that translates standard MCP JSON-RPC to the platform's SSE tool protocol.
+
+**Claude Desktop:**
+
+```bash
+# Start MCP bridge
+bash external-agents/claude-desktop/scripts/start-mcp-bridge.sh
+
+# Install config (Windows PowerShell)
+.\external-agents\claude-desktop\scripts\install.ps1
+# Restart Claude Desktop — Tools icon should show 19 tools
+```
+
+| Session started — upload link provided | Job complete — extraction summary and download link |
+|---|---|
+| ![Claude Desktop session start](screenshots/external-agents/claude-desktop0.jpg) | ![Claude Desktop extraction complete](screenshots/external-agents/claude-desktop2.jpg) |
+
+**LibreChat (official image):**
+
+```bash
+cp external-agents/librechat/.env.example external-agents/librechat/.env
+# Set ANTHROPIC_API_KEY and generate random secrets (see docs/getting-started.md §13.2)
+cd external-agents/librechat && docker compose up -d
+# Open http://localhost:3081
+```
+
+| Agent running MCP tool calls (ingest → detect → clip) | Extraction complete — final output URL |
+|---|---|
+| ![LibreChat MCP tool calls in progress](screenshots/external-agents/librechat1.jpg) | ![LibreChat extraction complete](screenshots/external-agents/librechat2.jpg) |
+
+See [docs/getting-started.md § External agents](docs/getting-started.md#13-external-agents-librechat-official--claude-desktop) for the full walkthrough.
+
+---
+
 ## Tech Stack
 
 | Layer | Technology |
@@ -89,7 +125,7 @@ All steps are asynchronous and fault-tolerant via Azure Service Bus queues.
 | Container Platform | Azure Container Apps + KEDA |
 | Infrastructure as Code | Terraform |
 | Storage | Azure Blob Storage |
-| Database | Azure PostgreSQL (asyncpg + SQLAlchemy async) |
+| Database | PostgreSQL 15 (ACA container, Azure Files backed) |
 | Messaging | Azure Service Bus |
 | Auth | Azure Entra External ID (magic link / JWT) |
 | Local Dev Emulation | Docker Compose + Azurite |
@@ -175,42 +211,6 @@ ANTHROPIC_API_KEY=sk-... scripts/run-e2e-local.sh
 | [docs/e2e-tests.md](docs/e2e-tests.md) | End-to-end test details |
 | [external-agents/claude-desktop/README.md](external-agents/claude-desktop/README.md) | Claude Desktop MCP integration |
 | [external-agents/librechat/README.md](external-agents/librechat/README.md) | LibreChat official image MCP integration |
-
----
-
-## External Agents
-
-The platform's MCP tools can be used directly from Claude Desktop or the LibreChat official image via an MCP bridge (port 8300) that translates standard MCP JSON-RPC to the platform's SSE tool protocol.
-
-**Claude Desktop:**
-
-```bash
-# Start MCP bridge
-bash external-agents/claude-desktop/scripts/start-mcp-bridge.sh
-
-# Install config (Windows PowerShell)
-.\external-agents\claude-desktop\scripts\install.ps1
-# Restart Claude Desktop — Tools icon should show 19 tools
-```
-
-| Session started — upload link provided | Job complete — extraction summary and download link |
-|---|---|
-| ![Claude Desktop session start](screenshots/external-agents/claude-desktop0.jpg) | ![Claude Desktop extraction complete](screenshots/external-agents/claude-desktop2.jpg) |
-
-**LibreChat (official image):**
-
-```bash
-cp external-agents/librechat/.env.example external-agents/librechat/.env
-# Set ANTHROPIC_API_KEY and generate random secrets (see docs/getting-started.md §13.2)
-cd external-agents/librechat && docker compose up -d
-# Open http://localhost:3081
-```
-
-| Agent running MCP tool calls (ingest → detect → clip) | Extraction complete — final output URL |
-|---|---|
-| ![LibreChat MCP tool calls in progress](screenshots/external-agents/librechat1.jpg) | ![LibreChat extraction complete](screenshots/external-agents/librechat2.jpg) |
-
-See [docs/getting-started.md § External agents](docs/getting-started.md#13-external-agents-librechat-official--claude-desktop) for the full walkthrough.
 
 ---
 
