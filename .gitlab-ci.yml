@@ -30,6 +30,10 @@ variables:
 
 .docker-login: &docker-login
   before_script:
+    - echo "ACR_REGISTRY raw = [$ACR_REGISTRY]"
+    - env | grep ACR || true
+    - export CLEAN_ACR=$(echo "$ACR_REGISTRY" | sed 's#https://##' | sed 's#/$##')
+    - echo $CLEAN_ACR  
     - echo "$ACR_PASSWORD" | docker login "$ACR_REGISTRY" -u "$ACR_USERNAME" --password-stdin
 
 .azure-login: &azure-login
