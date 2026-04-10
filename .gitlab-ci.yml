@@ -42,7 +42,9 @@ variables:
     - az account set --subscription "$AZURE_SUBSCRIPTION_ID"
 
 .terraform-setup: &terraform-setup
-  image: hashicorp/terraform:1.9
+  image:
+    name: hashicorp/terraform:1.9
+    entrypoint: [""]
   before_script:
     - cd "$TF_DIR"
     - export TF_VAR_pipeline_id="$CI_PIPELINE_ID"
