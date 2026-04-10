@@ -7,11 +7,24 @@ FROM base AS builder
 RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
 RUN pip install poetry==1.8.3
 COPY pyproject.toml poetry.lock* ./
+# CPU_ONLY (default true): replaces the CUDA torch wheel with the CPU-only build and removes
+# the nvidia/* CUDA runtime packages and triton (~4.8 GB total, never used without a GPU).
+# To enable GPU support: --build-arg CPU_ONLY=false
+ARG CPU_ONLY=true
 RUN poetry config virtualenvs.in-project true \
     && poetry lock --no-update \
     && poetry install --only=main --no-root \
     && .venv/bin/pip install --no-cache-dir "jsonpath-ng>=1.6" "openai-whisper>=20231117" \
-    && .venv/bin/pip install --no-cache-dir "git+https://github.com/ultralytics/CLIP.git"
+    && .venv/bin/pip install --no-cache-dir "git+https://github.com/ultralytics/CLIP.git" \
+    && if [ "$CPU_ONLY" = "true" ]; then \
+         .venv/bin/pip install --no-cache-dir --force-reinstall torch torchvision --index-url https://download.pytorch.org/whl/cpu \
+         && .venv/bin/pip uninstall -y \
+              nvidia-cublas-cu12 nvidia-cuda-cupti-cu12 nvidia-cuda-nvrtc-cu12 \
+              nvidia-cuda-runtime-cu12 nvidia-cudnn-cu12 nvidia-cufft-cu12 \
+              nvidia-curand-cu12 nvidia-cusolver-cu12 nvidia-cusparse-cu12 \
+              nvidia-nccl-cu12 nvidia-nvjitlink-cu12 nvidia-nvtx-cu12 triton \
+              2>/dev/null || true; \
+       fi
 
 FROM base AS production
 WORKDIR /app

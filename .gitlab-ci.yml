@@ -7,6 +7,7 @@
 stages:
   - lint
   - build_images
+  - build_analysis
   - aca_test_env_create
   - deploy_test_services
   - e2e_tests
@@ -147,8 +148,13 @@ build:notification-worker:
     - docker push "$ACR_REGISTRY/notification-worker:buildcache" || true
 
 build:mcp-server-analysis:
-  <<: *build-image
+  stage: build_analysis
+  image: docker:26
+  services:
+    - docker:26-dind
+  <<: *docker-login
   script:
+    - docker system prune -f || true
     - |
       docker build \
         --build-arg BUILDKIT_INLINE_CACHE=1 \
