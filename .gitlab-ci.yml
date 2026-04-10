@@ -62,11 +62,7 @@ variables:
     - |
       terraform init \
         -backend-config="storage_account_name=$TF_STATE_STORAGE_ACCOUNT" \
-        -backend-config="tenant_id=$AZURE_TENANT_ID" \
-        -backend-config="subscription_id=$AZURE_SUBSCRIPTION_ID" \
-        -backend-config="client_id=$AZURE_CLIENT_ID" \
-        -backend-config="client_secret=$AZURE_CLIENT_SECRET" \
-        -backend-config="use_cli=false"
+        -backend-config="access_key=$TF_STATE_ACCESS_KEY"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # LINT
