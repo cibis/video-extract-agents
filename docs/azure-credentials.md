@@ -183,6 +183,23 @@ az storage container create \
 
 This matches the `backend.tf` configuration in all three environment directories.
 
+### Retrieve the access key (required for CI)
+
+CI authenticates to the state backend using the storage account access key rather than Azure AD (the `hashicorp/terraform:1.9` image has no Azure CLI, so Azure AD auth cannot be used).
+
+**Azure CLI:**
+```bash
+az storage account keys list \
+  --account-name tfstatevideoextract \
+  --resource-group terraform-state-rg \
+  --query "[0].value" -o tsv
+```
+
+**Azure portal:**
+Storage accounts → `tfstatevideoextract` → **Security + networking** → **Access keys** → copy **key1**.
+
+Add the value as GitLab CI/CD variable `TF_STATE_ACCESS_KEY` (masked, protected). See the [GitLab CI variables](#gitlab-cicd-variables) section.
+
 ---
 
 ## 3. Azure Blob Storage Account
@@ -768,7 +785,7 @@ All variables below are set in **GitLab → your project → Settings → CI/CD 
 | `ACR_USERNAME` | ACR admin username | yes | `&docker-login` anchor in `.gitlab-ci.yml` |
 | `ACR_PASSWORD` | ACR admin password | yes | `&docker-login` anchor in `.gitlab-ci.yml`; also passed to Terraform as `TF_VAR_acr_password` in `&terraform-setup` |
 | `DB_ADMIN_PASSWORD` | PostgreSQL container admin password | yes | `&terraform-setup` anchor → `TF_VAR_db_admin_password` → `infrastructure/terraform/envs/dev/variables.tf` → `module.aca.db_admin_password` |
-| `TF_STATE_STORAGE_ACCOUNT` | Terraform state storage account name (`tfstatevideoextract`) | no | `&terraform-setup` anchor → `terraform init -backend-config` in `.gitlab-ci.yml` |
+| `TF_STATE_ACCESS_KEY` | Access key for the `tfstatevideoextract` storage account — used by `terraform init` to authenticate to the azurerm backend (Azure AD / CLI auth is not available in the Terraform CI image) | yes | `&terraform-setup` anchor → `terraform init -backend-config="access_key=..."` in `.gitlab-ci.yml` |
 | `TF_VAR_anthropic_api_key` | Anthropic API key | yes | `&terraform-setup` anchor → `infrastructure/terraform/envs/dev/variables.tf` → `module.aca` → `ANTHROPIC_API_KEY` on containers |
 | `TF_VAR_entra_tenant_id` | Entra External ID tenant ID | no | `&terraform-setup` anchor → `infrastructure/terraform/envs/dev/variables.tf` → `module.aca` → `ENTRA_TENANT_ID` on `api-gateway` |
 | `TF_VAR_entra_client_id` | Entra External ID app/client ID | no | `&terraform-setup` anchor → `infrastructure/terraform/envs/dev/variables.tf` → `module.aca` → `ENTRA_CLIENT_ID` on `api-gateway` |
