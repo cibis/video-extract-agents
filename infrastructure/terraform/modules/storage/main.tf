@@ -1,5 +1,5 @@
 resource "azurerm_storage_account" "main" {
-  name                     = "videoextract${var.environment}${random_string.suffix.result}"
+  name                     = "${substr("videoextract${var.environment}", 0, 18)}${random_string.suffix.result}"
   resource_group_name      = var.resource_group_name
   location                 = var.location
   account_tier             = var.account_tier
