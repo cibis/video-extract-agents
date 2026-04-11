@@ -254,7 +254,7 @@ e2e_tests:
     - export MCP_PROCESSING_URL="https://$(python3 -c 'import json; print(json.load(open("infrastructure/terraform/envs/test/tf-outputs.json"))["mcp_processing_fqdn"]["value"])')"
     - |
       echo "Waiting for API Gateway to be healthy (ACA cold start)..."
-      for i in $(seq 1 3); do
+      for i in $(seq 1 2); do
         STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$API_GATEWAY_URL/health" || true)
         if [ "$STATUS" = "200" ]; then
           echo "API Gateway healthy after $i attempts."
@@ -276,15 +276,23 @@ collect_e2e_logs:
                 mcp-server-analysis mcp-server-processing angular-shell librechat postgresql)
     - mkdir -p ci-logs
     - |
-      # --- Container stdout/stderr logs (last 2000 lines each) ---
+      # --- Container stdout/stderr logs (last 300 lines each) ---
       for svc in "${SERVICES[@]}"; do
         echo "=== $svc ===" | tee ci-logs/${svc}.log
         az containerapp logs show \
           --name "$svc" \
           --resource-group "$RG" \
-          --tail 2000 \
-          --output table 2>&1 | tee -a ci-logs/${svc}.log || \
-          echo "[no logs available for $svc]" >> ci-logs/${svc}.log
+          --tail 300 \
+          --output table 2>&1 | tee -a ci-logs/${svc}.log || {
+          echo "[no console logs — trying system logs]" >> ci-logs/${svc}.log
+          az containerapp logs show \
+            --name "$svc" \
+            --resource-group "$RG" \
+            --type system \
+            --tail 300 \
+            --output table 2>&1 >> ci-logs/${svc}.log || \
+            echo "[no logs available for $svc]" >> ci-logs/${svc}.log
+        }
       done
     - |
       # --- Container app status and replica diagnostics ---
