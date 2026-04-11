@@ -3,6 +3,11 @@ variable "pipeline_id" {
   description = "GitLab CI pipeline ID — used to create uniquely named ephemeral resources"
 }
 
+variable "subscription_id" {
+  type        = string
+  description = "Azure subscription ID — required by azurerm provider 4.x when use_cli = false"
+}
+
 variable "location" {
   type    = string
   default = "eastus"

@@ -1,3 +1,8 @@
+variable "subscription_id" {
+  type        = string
+  description = "Azure subscription ID — required by azurerm provider 4.x when use_cli = false"
+}
+
 variable "location" {
   type    = string
   default = "eastus"

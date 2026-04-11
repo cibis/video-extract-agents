@@ -13,7 +13,8 @@ terraform {
 
 provider "azurerm" {
   features {}
-  use_cli = false
+  use_cli         = false
+  subscription_id = var.subscription_id
 }
 
 resource "azurerm_resource_group" "main" {
