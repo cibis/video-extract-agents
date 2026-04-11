@@ -166,16 +166,20 @@ resource "azurerm_container_app" "api_gateway" {
         value = "frontdoor"
       }
       env {
-        name  = "FRONT_DOOR_URL"
+        name  = "FRONT_DOOR_ENDPOINT"
         value = var.front_door_url
       }
       env {
-        name  = "ENTRA_TENANT_ID"
+        name  = "AZURE_ENTRA_TENANT_ID"
         value = var.entra_tenant_id
       }
       env {
-        name  = "ENTRA_CLIENT_ID"
+        name  = "AZURE_ENTRA_CLIENT_ID"
         value = var.entra_client_id
+      }
+      env {
+        name  = "AZURE_ENTRA_JWKS_URI"
+        value = var.entra_tenant_id != "" ? "https://login.microsoftonline.com/${var.entra_tenant_id}/discovery/v2.0/keys" : ""
       }
       env {
         name  = "LOCAL_DEV_SKIP_AUTH"
