@@ -226,7 +226,7 @@ Each container app follows the same pattern:
 - Scale rule: **KEDA Service Bus** — scales on `job-completed` queue depth
 - Key env vars: `NOTIFICATION_MODE=acs`, `AZURE_COMMUNICATION_SERVICES_CONNECTION_STRING`, `FRONT_DOOR_HOSTNAME`
 
-##### `angular-frontend`
+##### `angular-shell`
 - Image: `angular-shell:<image_tag>`
 - CPU: 0.25 vCPU, 0.5 GiB memory
 - **External ingress** on port 80
@@ -360,7 +360,7 @@ Four services use HTTP concurrency scaling via `http_scale_rule` blocks:
 |---|---|
 | `api-gateway` | 50 |
 | `mcp-server-analysis` | 20 |
-| `angular-frontend` | 50 |
+| `angular-shell` | 50 |
 | `librechat` | 50 |
 
 All services scale to zero when idle (`min_replicas = 0`) in dev and test, except `postgresql` which is hardcoded to `min_replicas = 1` in all environments. In prod, `min_replicas = 1` keeps all services warm.

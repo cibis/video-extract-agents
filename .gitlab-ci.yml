@@ -231,7 +231,7 @@ deploy_test_services:
   script:
     - |
       SERVICES=(api-gateway agent-orchestrator preprocessing-worker notification-worker
-                mcp-server-analysis mcp-server-processing angular-frontend librechat)
+                mcp-server-analysis mcp-server-processing angular-shell librechat)
       RG="video-extract-test-${CI_PIPELINE_ID}"
       for svc in "${SERVICES[@]}"; do
         az containerapp update \
@@ -245,7 +245,11 @@ e2e_tests:
   image: python:3.11-slim
   script:
     - pip install pytest httpx asyncpg
+    - OUTPUTS="infrastructure/terraform/envs/test/tf-outputs.json"
     - export API_GATEWAY_URL="https://$(python3 -c 'import json; print(json.load(open("infrastructure/terraform/envs/test/tf-outputs.json"))["api_gateway_fqdn"]["value"])')"
+    - export AGENT_ORCHESTRATOR_URL="https://$(python3 -c 'import json; print(json.load(open("infrastructure/terraform/envs/test/tf-outputs.json"))["agent_orchestrator_fqdn"]["value"])')"
+    - export MCP_ANALYSIS_URL="https://$(python3 -c 'import json; print(json.load(open("infrastructure/terraform/envs/test/tf-outputs.json"))["mcp_analysis_fqdn"]["value"])')"
+    - export MCP_PROCESSING_URL="https://$(python3 -c 'import json; print(json.load(open("infrastructure/terraform/envs/test/tf-outputs.json"))["mcp_processing_fqdn"]["value"])')"
     - pytest tests/e2e/ -v --tb=short
 
 aca_test_env_destroy:

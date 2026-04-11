@@ -212,7 +212,7 @@ This creates:
 - Resource group `video-extract-dev`
 - Azure Container Registry (Basic SKU for dev)
 - Azure Container Apps environment + Log Analytics workspace
-- All 9 container apps (postgresql, api-gateway, agent-orchestrator, preprocessing-worker, notification-worker, mcp-server-analysis, mcp-server-processing, angular-frontend, librechat)
+- All 9 container apps (postgresql, api-gateway, agent-orchestrator, preprocessing-worker, notification-worker, mcp-server-analysis, mcp-server-processing, angular-shell, librechat)
 - Blob Storage account (1 container: `videos`; Azure Files share for PostgreSQL persistence)
 - Service Bus namespace (5 queues)
 - Application Insights

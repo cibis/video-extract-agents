@@ -641,7 +641,7 @@ graph TD
         subgraph ACA["Azure Container Apps Environment (dev | prod)"]
 
             subgraph HTTP_Scale["HTTP autoscaling (concurrency)"]
-                ANGULAR["angular-frontend"]
+                ANGULAR["angular-shell"]
                 LC["librechat"]
                 GW["api-gateway"]
                 ORC["agent-orchestrator\n(HTTP entry point)"]

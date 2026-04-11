@@ -22,8 +22,8 @@ output "log_analytics_workspace_id" {
   value = azurerm_log_analytics_workspace.main.id
 }
 
-output "angular_frontend_fqdn" {
-  value = azurerm_container_app.angular_frontend.latest_revision_fqdn
+output "angular_shell_fqdn" {
+  value = azurerm_container_app.angular_shell.latest_revision_fqdn
 }
 
 output "librechat_fqdn" {

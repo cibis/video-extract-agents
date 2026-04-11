@@ -583,8 +583,8 @@ resource "azurerm_container_app" "notification_worker" {
 
 # ─── Angular Frontend ─────────────────────────────────────────────────────────
 
-resource "azurerm_container_app" "angular_frontend" {
-  name                         = "angular-frontend"
+resource "azurerm_container_app" "angular_shell" {
+  name                         = "angular-shell"
   container_app_environment_id = azurerm_container_app_environment.main.id
   resource_group_name          = var.resource_group_name
   revision_mode                = "Single"
@@ -606,7 +606,7 @@ resource "azurerm_container_app" "angular_frontend" {
     max_replicas = var.max_replicas
 
     container {
-      name   = "angular-frontend"
+      name   = "angular-shell"
       image  = "${var.acr_login_server}/angular-shell:${var.image_tag}"
       cpu    = 0.25
       memory = "0.5Gi"
