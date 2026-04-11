@@ -4,10 +4,6 @@ terraform {
       source  = "hashicorp/azurerm"
       version = "~> 4.0"
     }
-    random = {
-      source  = "hashicorp/random"
-      version = "~> 3.6"
-    }
   }
 }
 
@@ -59,16 +55,6 @@ resource "azurerm_servicebus_queue" "queues" {
   max_delivery_count = 5
 }
 
-module "acr" {
-  source              = "../../modules/acr"
-  resource_group_name = azurerm_resource_group.main.name
-  location            = var.location
-  # Use pipeline_id suffix to avoid ACR name collisions between concurrent test runs
-  environment         = "test${var.pipeline_id}"
-  sku                 = "Basic"
-  tags                = local.tags
-}
-
 module "appcommunication" {
   source              = "../../modules/appcommunication"
   resource_group_name = azurerm_resource_group.main.name
@@ -81,9 +67,9 @@ module "aca" {
   resource_group_name           = azurerm_resource_group.main.name
   location                      = var.location
   environment                   = local.environment
-  acr_login_server              = module.acr.login_server
-  acr_username                  = module.acr.admin_username
-  acr_password                  = module.acr.admin_password
+  acr_login_server              = var.acr_login_server
+  acr_username                  = var.acr_username
+  acr_password                  = var.acr_password
   image_tag                     = var.image_tag
   service_bus_namespace         = azurerm_servicebus_namespace.main.name
   service_bus_connection_string = azurerm_servicebus_namespace.main.default_primary_connection_string
