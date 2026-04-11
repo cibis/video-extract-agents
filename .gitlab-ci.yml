@@ -231,7 +231,7 @@ deploy_test_services:
   script:
     - |
       SERVICES=(api-gateway agent-orchestrator preprocessing-worker notification-worker
-                mcp-server-analysis mcp-server-processing angular-shell librechat)
+                mcp-server-analysis mcp-server-processing angular-frontend librechat)
       RG="video-extract-test-${CI_PIPELINE_ID}"
       for svc in "${SERVICES[@]}"; do
         az containerapp update \
@@ -247,7 +247,7 @@ e2e_tests:
     API_GATEWAY_URL: "https://api-gateway.$(cat /tmp/tf-outputs.json | python3 -c \"import sys,json; print(json.load(sys.stdin)['api_gateway_fqdn']['value'])\")"
   script:
     - pip install pytest httpx asyncpg
-    - pytest tests/e2e/ -v --tb=short || true  # Non-blocking; failures reported but don't fail the destroy step
+    - pytest tests/e2e/ -v --tb=short
 
 aca_test_env_destroy:
   stage: aca_test_env_destroy
