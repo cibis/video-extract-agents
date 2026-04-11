@@ -93,22 +93,33 @@ async function ensureAzuriteContainer(): Promise<void> {
   console.error(`Storage container '${config.AZURE_STORAGE_CONTAINER_NAME}' could not be initialised after ${MAX_ATTEMPTS} attempts — uploads will fail.`);
 }
 
-const app = createApp();
-
-const server = http.createServer(app);
-// Disable socket idle timeout and set generous keep-alive so long-running
-// agent calls (which can exceed several minutes) are never cut short.
-server.setTimeout(0);
-server.keepAliveTimeout = 3_600_000; // 1 hour
-server.headersTimeout  = 3_601_000; // must exceed keepAliveTimeout
-
-server.listen(config.PORT, async () => {
-  console.log(`API Gateway listening on port ${config.PORT} [${config.NODE_ENV}]`);
+async function main() {
   if (config.LOCAL_DEV_SKIP_AUTH) {
     console.warn('WARNING: LOCAL_DEV_SKIP_AUTH=true — JWT validation disabled');
   }
+
+  // Initialise schema before the server starts accepting requests so no request
+  // can arrive before tables exist. Includes retry logic for slow DB cold starts.
   await initializeSchema();
+
   if (config.OUTPUT_URL_MODE === 'local') {
     await ensureAzuriteContainer();
   }
+
+  const app = createApp();
+  const server = http.createServer(app);
+  // Disable socket idle timeout and set generous keep-alive so long-running
+  // agent calls (which can exceed several minutes) are never cut short.
+  server.setTimeout(0);
+  server.keepAliveTimeout = 3_600_000; // 1 hour
+  server.headersTimeout  = 3_601_000; // must exceed keepAliveTimeout
+
+  server.listen(config.PORT, () => {
+    console.log(`API Gateway listening on port ${config.PORT} [${config.NODE_ENV}]`);
+  });
+}
+
+main().catch(err => {
+  console.error('Fatal startup error:', err);
+  process.exit(1);
 });
