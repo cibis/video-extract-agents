@@ -13,6 +13,7 @@ terraform {
 
 provider "azurerm" {
   features {}
+  use_cli = false
 }
 
 # Ephemeral test environment — destroyed after every CI pipeline run
