@@ -1,9 +1,9 @@
 ---
 # Video Extract Platform — GitLab CI/CD Pipeline
 # Stages: lint → build_images → aca_test_env_create → deploy_test_services →
-#         e2e_tests → aca_test_env_destroy → push_to_acr → deploy_dev →
-#         manual_approval → deploy_prod
-# 
+#         e2e_tests → collect_e2e_logs → aca_test_env_destroy → push_to_acr →
+#         deploy_dev → manual_approval → deploy_prod
+#
 
 stages:
   - lint
@@ -12,6 +12,7 @@ stages:
   - aca_test_env_create
   - deploy_test_services
   - e2e_tests
+  - collect_e2e_logs
   - aca_test_env_destroy
   - push_to_acr
   - deploy_dev
@@ -263,6 +264,68 @@ e2e_tests:
         sleep 5
       done
     - pytest tests/e2e/ -v --tb=short
+
+collect_e2e_logs:
+  stage: collect_e2e_logs
+  image: mcr.microsoft.com/azure-cli:latest
+  <<: *azure-login
+  when: always
+  script:
+    - RG="video-extract-test-${CI_PIPELINE_ID}"
+    - SERVICES=(api-gateway agent-orchestrator preprocessing-worker notification-worker
+                mcp-server-analysis mcp-server-processing angular-shell librechat postgresql)
+    - mkdir -p ci-logs
+    - |
+      # --- Container stdout/stderr logs (last 2000 lines each) ---
+      for svc in "${SERVICES[@]}"; do
+        echo "=== $svc ===" | tee ci-logs/${svc}.log
+        az containerapp logs show \
+          --name "$svc" \
+          --resource-group "$RG" \
+          --tail 2000 \
+          --output table 2>&1 | tee -a ci-logs/${svc}.log || \
+          echo "[no logs available for $svc]" >> ci-logs/${svc}.log
+      done
+    - |
+      # --- Container app status and replica diagnostics ---
+      echo "=== Container App Status ===" > ci-logs/aca-status.log
+      for svc in "${SERVICES[@]}"; do
+        echo "--- $svc ---" >> ci-logs/aca-status.log
+        az containerapp show \
+          --name "$svc" \
+          --resource-group "$RG" \
+          --query "{name:name, provisioningState:properties.provisioningState, latestRevision:properties.latestRevisionName, runningStatus:properties.runningStatus}" \
+          --output json 2>&1 >> ci-logs/aca-status.log || true
+        az containerapp replica list \
+          --name "$svc" \
+          --resource-group "$RG" \
+          --output table 2>&1 >> ci-logs/aca-status.log || true
+      done
+    - |
+      # --- Resource group overview ---
+      echo "=== Resource Group Resources ===" > ci-logs/rg-resources.log
+      az resource list --resource-group "$RG" --output table 2>&1 >> ci-logs/rg-resources.log
+    - |
+      # --- Service Bus queue depths ---
+      echo "=== Service Bus Queue Depths ===" > ci-logs/servicebus.log
+      SB_NS=$(az servicebus namespace list --resource-group "$RG" --query "[0].name" --output tsv 2>/dev/null || true)
+      if [ -n "$SB_NS" ]; then
+        for q in video-uploaded video-indexed job-queued job-completed job-failed; do
+          az servicebus queue show \
+            --namespace-name "$SB_NS" \
+            --resource-group "$RG" \
+            --name "$q" \
+            --query "{queue:name, active:countDetails.activeMessageCount, dead:countDetails.deadLetterMessageCount}" \
+            --output json 2>&1 >> ci-logs/servicebus.log || true
+        done
+      fi
+    - echo "Log collection complete. Files:" && ls -lh ci-logs/
+  artifacts:
+    name: "e2e-logs-${CI_PIPELINE_ID}"
+    paths:
+      - ci-logs/
+    expire_in: 7d
+    when: always
 
 aca_test_env_destroy:
   stage: aca_test_env_destroy

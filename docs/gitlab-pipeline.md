@@ -35,6 +35,11 @@ push to any branch
 └─────┬─────┘
       │
       ▼ (always — even on failure)
+┌──────────────────────┐
+│  collect_e2e_logs    │  az containerapp logs → ci-logs/ artifact
+└──────────┬───────────┘
+           │
+           ▼ (always — even on failure)
 ┌───────────────────────┐
 │ aca_test_env_destroy  │  Terraform destroys the ephemeral environment
 └──────────┬────────────┘
@@ -284,7 +289,113 @@ helpers.assert_tool_invoked   ← GET /v1/jobs/{id}/logs → assert tool appeare
 
 ---
 
-### Stage 6 — `aca_test_env_destroy`
+### Stage 6 — `collect_e2e_logs`
+
+**Container logs and diagnostics captured here as a downloadable artifact.**
+
+- **Image:** `mcr.microsoft.com/azure-cli:latest`
+- **Uses:** `&azure-login` template
+- **`when: always`** — runs regardless of whether `e2e_tests` passed or failed
+
+This stage runs immediately after `e2e_tests` and before `aca_test_env_destroy`. It pulls logs from every container in the ephemeral environment while it is still alive, and uploads them as a single GitLab artifact. Once `aca_test_env_destroy` runs, these logs would be gone permanently.
+
+#### What is collected
+
+```
+ci-logs/
+  api-gateway.log            stdout/stderr, last 2000 lines
+  agent-orchestrator.log
+  preprocessing-worker.log
+  notification-worker.log
+  mcp-server-analysis.log
+  mcp-server-processing.log
+  angular-shell.log
+  librechat.log
+  postgresql.log
+  aca-status.log             provisioning state + replica list for all 9 container apps
+  rg-resources.log           full resource group inventory (all Azure resources)
+  servicebus.log             queue depths + dead-letter counts for all 5 queues
+```
+
+#### How it works
+
+```bash
+# Container stdout/stderr (last 2000 lines per service):
+az containerapp logs show \
+  --name "$svc" \
+  --resource-group "$RG" \
+  --tail 2000 \
+  --output table
+
+# Container app status + replica state (all services):
+az containerapp show   --name "$svc" --resource-group "$RG" --query "{...}" --output json
+az containerapp replica list --name "$svc" --resource-group "$RG" --output table
+
+# Resource group inventory:
+az resource list --resource-group "$RG" --output table
+
+# Service Bus queue depths (active + dead-letter):
+az servicebus queue show --namespace-name "$SB_NS" --resource-group "$RG" --name "$q" ...
+```
+
+#### Artifact details
+
+| Property | Value |
+|---|---|
+| Artifact name | `e2e-logs-{CI_PIPELINE_ID}` |
+| Expiry | 7 days |
+| Triggered | `when: always` — captured on both pass and fail |
+
+---
+
+### How to download the logs after a pipeline run
+
+After any pipeline run that includes the test environment stages:
+
+1. Go to **GitLab → CI/CD → Pipelines**
+2. Click the pipeline you want to inspect
+3. Find the **`collect_e2e_logs`** job in the pipeline graph — click it to open the job page
+4. In the right-hand panel, click **Download artifacts** (or use the **Artifacts** tab at the top of the job page)
+5. A `.zip` file named `e2e-logs-{pipeline_id}.zip` downloads — extract it to find the `ci-logs/` directory
+
+Alternatively, download via the GitLab API or `glab` CLI:
+```bash
+# Using glab CLI (requires glab auth login first):
+glab ci artifact <pipeline_id> collect_e2e_logs
+
+# Using the GitLab API directly:
+curl --header "PRIVATE-TOKEN: <your-token>" \
+  "https://gitlab.com/<group>/<project>/-/jobs/<job_id>/artifacts/download" \
+  --output e2e-logs.zip
+```
+
+---
+
+### Using the logs to diagnose failures
+
+#### 504 Gateway Timeout / test failure
+
+1. Open `ci-logs/api-gateway.log` — look for OOM signals (`JavaScript heap out of memory`), connection errors to downstream services, or request timeout entries
+2. Check `ci-logs/aca-status.log` — look for `provisioningState != Succeeded` or replica counts of 0 on services that should be running
+3. Check `ci-logs/agent-orchestrator.log` — look for Python tracebacks or timeout errors calling MCP servers
+
+#### Service Bus stuck / jobs not processing
+
+1. Open `ci-logs/servicebus.log` — look for high `dead` (dead-letter) counts on any queue
+2. Check `ci-logs/preprocessing-worker.log` or `ci-logs/agent-orchestrator.log` for the consumer errors that caused dead-lettering
+
+#### Container failed to start
+
+1. Open `ci-logs/aca-status.log` — find the service with a bad provisioning state
+2. Open the matching `ci-logs/<service>.log` — startup errors (bad env vars, missing secrets, DB connection failure) will appear at the top
+
+#### Cold start / timeout during warmup
+
+Check `ci-logs/api-gateway.log` around the timestamp when the health poll was running. Look for "Database schema initialised." — if it doesn't appear, the DB was still cold when tests started.
+
+---
+
+### Stage 7 — `aca_test_env_destroy`
 
 **Azure resources destroyed here.**
 
@@ -302,7 +413,8 @@ This is the safety guarantee: even if `build_images`, `e2e_tests`, or any earlie
 
 ---
 
-### Stage 7 — `push_to_acr`
+### Stage 8 — `push_to_acr`
+
 
 **Only runs on `main` branch.**
 
@@ -322,7 +434,7 @@ Images were already pushed to ACR in `build_images` with their commit SHA tag. T
 
 ---
 
-### Stage 8 — `deploy_dev`
+### Stage 9 — `deploy_dev`
 
 **Only runs on `main` branch.**
 
@@ -345,7 +457,7 @@ The `environment: name: dev` declaration registers this deployment in GitLab's E
 
 ---
 
-### Stage 9 — `manual_approval`
+### Stage 10 — `manual_approval`
 
 **Only runs on `main` branch.**
 
@@ -365,7 +477,7 @@ This is the production gate. The expectation is that someone has:
 
 ---
 
-### Stage 10 — `deploy_prod`
+### Stage 11 — `deploy_prod`
 
 **Only runs on `main` branch. Requires `manual_approval` to complete first.**
 
@@ -590,7 +702,8 @@ When an API key or connection string needs to be rotated:
 | `build_images` | Docker build error | Check the Dockerfile and service dependencies |
 | `aca_test_env_create` | Terraform error (quota, name collision) | Check Azure subscription quota; pipeline_id collision is very rare |
 | `deploy_test_services` | ACA update timeout | Check ACA logs in Azure portal for the test resource group |
-| `e2e_tests` | Test failure (non-blocking) | Check pytest output in the job log; test env is destroyed either way |
+| `e2e_tests` | Test failure (non-blocking) | Check pytest output in the job log; download the `e2e-logs-{pipeline_id}` artifact from `collect_e2e_logs` for container-level diagnosis (see "How to download the logs" section above) |
+| `collect_e2e_logs` | `az containerapp logs` returns nothing | Service may have crashed before logging; check `aca-status.log` in the artifact for replica state |
 | `aca_test_env_destroy` | Terraform destroy fails | Manually destroy the resource group: `az group delete --name video-extract-test-<id>` |
 | `deploy_dev` / `deploy_prod` | ACA image pull error | Verify the image exists in ACR with the right tag |
 
