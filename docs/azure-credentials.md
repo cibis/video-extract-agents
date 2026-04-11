@@ -376,7 +376,7 @@ No manual creation steps are required. The container is reachable by other servi
 
 The password is a sensitive Terraform input variable (`db_admin_password`) declared in each env's `variables.tf`. Set it in one of two ways:
 - **Locally:** create `infrastructure/terraform/envs/dev/terraform.tfvars` (gitignored) and add `db_admin_password = "g7$N9#vA2xP8zLqV!wM1nB9y"`
-- **CI:** add a masked GitLab variable `TF_VAR_db_admin_password` — the `TF_VAR_` prefix makes Terraform pick it up automatically
+- **CI:** add a masked GitLab variable `DB_ADMIN_PASSWORD` — the `&terraform-setup` anchor in `.gitlab-ci.yml` maps it to `TF_VAR_db_admin_password` before calling Terraform
 
 ### Initialising the schema
 

@@ -244,6 +244,7 @@ e2e_tests:
   stage: e2e_tests
   image: python:3.11-slim
   script:
+    - apt-get update -qq && apt-get install -y --no-install-recommends ffmpeg
     - pip install pytest httpx asyncpg
     - OUTPUTS="infrastructure/terraform/envs/test/tf-outputs.json"
     - export API_GATEWAY_URL="https://$(python3 -c 'import json; print(json.load(open("infrastructure/terraform/envs/test/tf-outputs.json"))["api_gateway_fqdn"]["value"])')"

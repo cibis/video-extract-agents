@@ -178,6 +178,10 @@ resource "azurerm_container_app" "api_gateway" {
         value = var.entra_client_id
       }
       env {
+        name  = "LOCAL_DEV_SKIP_AUTH"
+        value = var.local_dev_skip_auth ? "true" : ""
+      }
+      env {
         name  = "APPLICATIONINSIGHTS_CONNECTION_STRING"
         value = var.appinsights_connection_string
       }

@@ -89,6 +89,7 @@ module "aca" {
   appinsights_connection_string = ""
   acs_connection_string         = module.appcommunication.primary_connection_string
   front_door_url                = ""
+  local_dev_skip_auth           = true
   min_replicas                  = 0
   max_replicas                  = 3
   tags                          = local.tags

@@ -162,6 +162,12 @@ variable "max_replicas" {
   default = 10
 }
 
+variable "local_dev_skip_auth" {
+  type        = bool
+  default     = false
+  description = "Set LOCAL_DEV_SKIP_AUTH=true on api-gateway; used in ephemeral test environments only"
+}
+
 variable "tags" {
   type    = map(string)
   default = {}
