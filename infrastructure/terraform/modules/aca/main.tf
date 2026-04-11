@@ -1,6 +1,6 @@
 locals {
-  database_url_asyncpg = "postgresql+asyncpg://${var.db_admin_username}:${var.db_admin_password}@postgresql:5432/videoextract"
-  database_url_pg      = "postgresql://${var.db_admin_username}:${var.db_admin_password}@postgresql:5432/videoextract"
+  database_url_asyncpg = "postgresql+asyncpg://${urlencode(var.db_admin_username)}:${urlencode(var.db_admin_password)}@postgresql:5432/videoextract"
+  database_url_pg      = "postgresql://${urlencode(var.db_admin_username)}:${urlencode(var.db_admin_password)}@postgresql:5432/videoextract"
 }
 
 # ─── PostgreSQL (container) ───────────────────────────────────────────────────
