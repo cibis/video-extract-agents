@@ -218,10 +218,10 @@ aca_test_env_create:
   <<: *terraform-setup
   script:
     - terraform apply -auto-approve
-    - terraform output -json > /tmp/tf-outputs.json
+    - terraform output -json > tf-outputs.json
   artifacts:
     paths:
-      - /tmp/tf-outputs.json
+      - infrastructure/terraform/envs/test/tf-outputs.json
     expire_in: 2h
 
 deploy_test_services:
@@ -243,10 +243,9 @@ deploy_test_services:
 e2e_tests:
   stage: e2e_tests
   image: python:3.11-slim
-  variables:
-    API_GATEWAY_URL: "https://api-gateway.$(cat /tmp/tf-outputs.json | python3 -c \"import sys,json; print(json.load(sys.stdin)['api_gateway_fqdn']['value'])\")"
   script:
     - pip install pytest httpx asyncpg
+    - export API_GATEWAY_URL="https://$(python3 -c 'import json; print(json.load(open("infrastructure/terraform/envs/test/tf-outputs.json"))["api_gateway_fqdn"]["value"])')"
     - pytest tests/e2e/ -v --tb=short
 
 aca_test_env_destroy:
