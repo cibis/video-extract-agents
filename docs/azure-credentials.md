@@ -100,7 +100,7 @@ Output:
 }
 ```
 
-The four fields from this output map to four variables that must be set in two places — your local shell for manual Terraform runs, and GitLab CI for the automated pipeline.
+The four fields from this output map to variables that must be set in two places — your local shell for manual Terraform runs, and GitLab CI for the automated pipeline.
 
 ### Local Terraform runs — shell environment
 
@@ -122,20 +122,25 @@ Navigate to your GitLab project → **Settings** → **CI/CD** → **Variables**
 
 For each variable: set **Key** and **Value**, check **Masked** (hides value in job logs), check **Protected** if you want it restricted to protected branches only.
 
-| Variable | Value from CLI output | Masked |
-|---|---|---|
-| `ARM_CLIENT_ID` | `appId` | yes |
-| `ARM_CLIENT_SECRET` | `password` | yes |
-| `ARM_TENANT_ID` | `tenant` | yes |
-| `ARM_SUBSCRIPTION_ID` | your subscription ID (from `az account show`) | yes |
+> **Note:** GitLab CI variables are named `AZURE_*`. The `&terraform-setup` anchor in `.gitlab-ci.yml` maps them to `ARM_*` env vars (read by the azurerm provider) and to `TF_VAR_*` vars (read by Terraform variables). Do **not** set `ARM_*` directly as GitLab variables.
 
-The pipeline reads these in `.gitlab-ci.yml` inside the `&terraform-setup` anchor:
+| GitLab CI Variable | Value | Masked |
+|---|---|---|
+| `AZURE_CLIENT_ID` | `appId` from SP creation output | yes |
+| `AZURE_CLIENT_SECRET` | `password` from SP creation output | yes |
+| `AZURE_TENANT_ID` | `tenant` from SP creation output | yes |
+| `AZURE_SUBSCRIPTION_ID` | your subscription ID (from `az account show --query id -o tsv`) | yes |
+
+The pipeline maps these in `.gitlab-ci.yml` inside the `&terraform-setup` anchor:
 ```yaml
 - export ARM_CLIENT_ID="$AZURE_CLIENT_ID"
 - export ARM_CLIENT_SECRET="$AZURE_CLIENT_SECRET"
 - export ARM_TENANT_ID="$AZURE_TENANT_ID"
 - export ARM_SUBSCRIPTION_ID="$AZURE_SUBSCRIPTION_ID"
+- export TF_VAR_subscription_id="$AZURE_SUBSCRIPTION_ID"
 ```
+
+`TF_VAR_subscription_id` is required because azurerm provider 4.x requires `subscription_id` to be set explicitly in the provider block when `use_cli = false`.
 
 ---
 
@@ -777,10 +782,10 @@ All variables below are set in **GitLab → your project → Settings → CI/CD 
 
 | Variable | Description | Masked | Picked up by |
 |---|---|---|---|
-| `ARM_CLIENT_ID` | Terraform service principal app ID | yes | `&azure-login` and `&terraform-setup` anchors in `.gitlab-ci.yml` |
-| `ARM_CLIENT_SECRET` | Terraform service principal password | yes | `&azure-login` and `&terraform-setup` anchors in `.gitlab-ci.yml` |
-| `ARM_SUBSCRIPTION_ID` | Azure subscription ID | yes | `&azure-login` and `&terraform-setup` anchors in `.gitlab-ci.yml` |
-| `ARM_TENANT_ID` | Azure AD tenant ID | yes | `&azure-login` and `&terraform-setup` anchors in `.gitlab-ci.yml` |
+| `AZURE_CLIENT_ID` | Terraform service principal app ID | yes | `&azure-login` (→ `ARM_CLIENT_ID`) and `&terraform-setup` anchors in `.gitlab-ci.yml` |
+| `AZURE_CLIENT_SECRET` | Terraform service principal password | yes | `&azure-login` (→ `ARM_CLIENT_SECRET`) and `&terraform-setup` anchors in `.gitlab-ci.yml` |
+| `AZURE_SUBSCRIPTION_ID` | Azure subscription ID | yes | `&azure-login` (→ `ARM_SUBSCRIPTION_ID`) and `&terraform-setup` (→ `ARM_SUBSCRIPTION_ID` + `TF_VAR_subscription_id`) anchors in `.gitlab-ci.yml`; required explicitly because azurerm provider 4.x needs `subscription_id` in the provider block when `use_cli = false` |
+| `AZURE_TENANT_ID` | Azure AD tenant ID | yes | `&azure-login` (→ `ARM_TENANT_ID`) and `&terraform-setup` anchors in `.gitlab-ci.yml` |
 | `ACR_REGISTRY` | ACR login server (e.g. `videoextractdevacr.azurecr.io`) | no | `&docker-login` anchor; all `build_images` and `push_to_acr` jobs in `.gitlab-ci.yml` |
 | `ACR_USERNAME` | ACR admin username | yes | `&docker-login` anchor in `.gitlab-ci.yml` |
 | `ACR_PASSWORD` | ACR admin password | yes | `&docker-login` anchor in `.gitlab-ci.yml`; also passed to Terraform as `TF_VAR_acr_password` in `&terraform-setup` |
