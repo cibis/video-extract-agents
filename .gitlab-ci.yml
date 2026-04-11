@@ -254,7 +254,7 @@ e2e_tests:
     - export MCP_PROCESSING_URL="https://$(python3 -c 'import json; print(json.load(open("infrastructure/terraform/envs/test/tf-outputs.json"))["mcp_processing_fqdn"]["value"])')"
     - |
       echo "Waiting for API Gateway to be healthy (ACA cold start)..."
-      for i in $(seq 1 40); do
+      for i in $(seq 1 3); do
         STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$API_GATEWAY_URL/health" || true)
         if [ "$STATUS" = "200" ]; then
           echo "API Gateway healthy after $i attempts."
