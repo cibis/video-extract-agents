@@ -10,6 +10,218 @@ export function getPool(): Pool {
   return _pool;
 }
 
+// ─── Schema initialisation ────────────────────────────────────────────────────
+
+const SCHEMA_SQL = `
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+CREATE TABLE IF NOT EXISTS users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email TEXT UNIQUE NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    is_test BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON sessions(user_id);
+
+CREATE TABLE IF NOT EXISTS videos (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    session_id UUID REFERENCES sessions(id) ON DELETE SET NULL,
+    original_url TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'uploaded',
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS videos_user_id_idx ON videos(user_id);
+CREATE INDEX IF NOT EXISTS videos_session_id_idx ON videos(session_id);
+CREATE INDEX IF NOT EXISTS videos_status_idx ON videos(status);
+
+CREATE TABLE IF NOT EXISTS video_keyframe_index (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    video_id UUID REFERENCES videos(id) ON DELETE CASCADE,
+    frame_index INTEGER NOT NULL,
+    frame_url TEXT NOT NULL,
+    timestamp_seconds FLOAT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(video_id, frame_index)
+);
+CREATE INDEX IF NOT EXISTS keyframe_video_id_idx ON video_keyframe_index(video_id);
+
+CREATE TABLE IF NOT EXISTS assets (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    session_id UUID REFERENCES sessions(id) ON DELETE SET NULL,
+    blob_url TEXT NOT NULL,
+    filename TEXT NOT NULL,
+    content_type TEXT NOT NULL,
+    file_size_bytes BIGINT,
+    source TEXT NOT NULL DEFAULT 'upload',
+    source_job_id UUID,
+    description TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS assets_user_id_idx ON assets(user_id);
+CREATE INDEX IF NOT EXISTS assets_session_id_idx ON assets(session_id);
+
+CREATE TABLE IF NOT EXISTS jobs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    session_id UUID REFERENCES sessions(id) ON DELETE SET NULL,
+    parent_job_id UUID REFERENCES jobs(id) ON DELETE SET NULL,
+    video_id UUID REFERENCES videos(id) ON DELETE SET NULL,
+    video_ids UUID[],
+    prompt TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'queued',
+    output_url TEXT,
+    error TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS jobs_user_id_idx ON jobs(user_id);
+CREATE INDEX IF NOT EXISTS jobs_session_id_idx ON jobs(session_id);
+CREATE INDEX IF NOT EXISTS jobs_status_idx ON jobs(status);
+
+CREATE TABLE IF NOT EXISTS job_steps (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    job_id UUID REFERENCES jobs(id) ON DELETE CASCADE,
+    step_name TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    result JSONB,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS job_steps_job_id_idx ON job_steps(job_id);
+
+CREATE TABLE IF NOT EXISTS outputs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    job_id UUID REFERENCES jobs(id) ON DELETE CASCADE,
+    session_id UUID REFERENCES sessions(id) ON DELETE SET NULL,
+    blob_url TEXT NOT NULL,
+    filename TEXT,
+    content_type TEXT DEFAULT 'video/mp4',
+    signed_url TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS outputs_job_id_idx ON outputs(job_id);
+CREATE INDEX IF NOT EXISTS outputs_session_id_idx ON outputs(session_id);
+
+CREATE TABLE IF NOT EXISTS session_assets (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    session_id UUID REFERENCES sessions(id) ON DELETE CASCADE,
+    asset_type TEXT NOT NULL,
+    blob_url TEXT NOT NULL,
+    filename TEXT,
+    content_type TEXT,
+    source_id UUID,
+    label TEXT,
+    metadata_json JSONB,
+    description TEXT,
+    summary_json JSONB,
+    source_job_id UUID REFERENCES jobs(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS session_assets_session_id_idx ON session_assets(session_id);
+CREATE INDEX IF NOT EXISTS session_assets_asset_type_idx ON session_assets(asset_type);
+CREATE INDEX IF NOT EXISTS session_assets_source_job_id_idx ON session_assets(source_job_id);
+CREATE UNIQUE INDEX IF NOT EXISTS session_assets_session_source_idx ON session_assets(session_id, source_id);
+
+CREATE TABLE IF NOT EXISTS job_logs (
+    id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    job_id        UUID        REFERENCES jobs(id) ON DELETE CASCADE,
+    session_id    UUID        REFERENCES sessions(id) ON DELETE SET NULL,
+    service_name  TEXT        NOT NULL DEFAULT '',
+    log_type      TEXT        NOT NULL,
+    model_id      TEXT,
+    tool_name     TEXT,
+    agent_role    TEXT,
+    task_name     TEXT,
+    message       TEXT,
+    message_type  TEXT        NOT NULL DEFAULT 'Output',
+    call_group_id UUID        NOT NULL DEFAULT gen_random_uuid(),
+    sequence_num  INTEGER     NOT NULL DEFAULT 0,
+    error_text    TEXT,
+    created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS job_logs_job_id_idx        ON job_logs(job_id);
+CREATE INDEX IF NOT EXISTS job_logs_session_id_idx    ON job_logs(session_id);
+CREATE INDEX IF NOT EXISTS job_logs_call_group_id_idx ON job_logs(call_group_id);
+CREATE INDEX IF NOT EXISTS job_logs_sequence_num_idx  ON job_logs(job_id, sequence_num);
+
+CREATE TABLE IF NOT EXISTS tool_progress (
+    call_group_id   UUID         PRIMARY KEY,
+    job_id          UUID         REFERENCES jobs(id) ON DELETE CASCADE,
+    tool_name       TEXT         NOT NULL,
+    total_units     INTEGER,
+    processed_units INTEGER      NOT NULL DEFAULT 0,
+    unit_label      TEXT         NOT NULL DEFAULT 'items',
+    status          TEXT         NOT NULL DEFAULT 'running',
+    started_at      TIMESTAMPTZ  DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ  DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS tool_progress_job_id_idx     ON tool_progress(job_id);
+CREATE INDEX IF NOT EXISTS tool_progress_updated_at_idx ON tool_progress(job_id, updated_at);
+
+CREATE TABLE IF NOT EXISTS app_settings (
+    key         TEXT PRIMARY KEY,
+    value       TEXT NOT NULL,
+    description TEXT,
+    updated_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS model_context_windows (
+    model_name            TEXT PRIMARY KEY,
+    context_window_tokens INTEGER NOT NULL,
+    safety_margin         FLOAT NOT NULL DEFAULT 0.5,
+    description           TEXT,
+    updated_at            TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Seed dev user for LOCAL_DEV_SKIP_AUTH mode
+INSERT INTO users (id, email) VALUES
+    ('00000000-0000-0000-0000-000000000001', 'dev@local')
+ON CONFLICT (id) DO NOTHING;
+`;
+
+/**
+ * Ensure all tables exist. Safe to call on every startup — all statements are
+ * CREATE TABLE IF NOT EXISTS / CREATE INDEX IF NOT EXISTS / INSERT ON CONFLICT DO NOTHING.
+ * Runs on every environment (local, CI test ACA, dev, prod).
+ * Retries for up to 60 s to handle PostgreSQL not being ready yet (ACA cold start).
+ */
+export async function initializeSchema(): Promise<void> {
+  const pool = getPool();
+  const MAX_ATTEMPTS = 20;
+  const DELAY_MS = 3_000;
+
+  for (let i = 1; i <= MAX_ATTEMPTS; i++) {
+    try {
+      const client = await pool.connect();
+      try {
+        await client.query(SCHEMA_SQL);
+        console.log('Database schema initialised.');
+        return;
+      } finally {
+        client.release();
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (i < MAX_ATTEMPTS) {
+        console.warn(`Schema init attempt ${i}/${MAX_ATTEMPTS} failed (${msg}) — retrying in ${DELAY_MS / 1000}s…`);
+        await new Promise(r => setTimeout(r, DELAY_MS));
+      } else {
+        console.error('Schema initialisation failed after all attempts:', err);
+        throw err;
+      }
+    }
+  }
+}
+
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 
 export interface Session {

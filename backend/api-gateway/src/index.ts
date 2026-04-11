@@ -15,6 +15,7 @@ import http from 'http';
 import { createApp } from './app';
 import { config } from './config';
 import { sharedKeyAuthHeader } from './routes/blobProxy';
+import { initializeSchema } from './services/dbService';
 
 const AZURITE_API_VERSION = '2020-10-02';
 
@@ -106,6 +107,7 @@ server.listen(config.PORT, async () => {
   if (config.LOCAL_DEV_SKIP_AUTH) {
     console.warn('WARNING: LOCAL_DEV_SKIP_AUTH=true — JWT validation disabled');
   }
+  await initializeSchema();
   if (config.OUTPUT_URL_MODE === 'local') {
     await ensureAzuriteContainer();
   }
