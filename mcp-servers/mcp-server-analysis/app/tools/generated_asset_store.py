@@ -21,15 +21,22 @@ def _blob_path(session_id: str | None, job_id: str, data_type: str, filename: st
 
 
 def _parse_container_blob(url: str) -> tuple[str, str]:
-    """Parse container name and blob path from a blob URL (Azurite and Azure)."""
+    """Parse container name and blob path from a blob URL (Azurite and Azure).
+
+    Azurite: http://azurite:10000/devstoreaccount1/<container>/<blob>
+    Azure:   https://<account>.blob.core.windows.net/<container>/<blob>
+    """
     parsed = urlparse(url)
     parts = parsed.path.lstrip("/").split("/", 2)
-    if len(parts) == 3:
-        # Azurite: /<account>/<container>/<blob>
+    if len(parts) == 3 and parts[0] == "devstoreaccount1":
+        # Azurite embeds the account name as the first path segment
         return parts[1], parts[2]
-    if len(parts) == 2:
-        return parts[0], parts[1]
-    raise ValueError(f"Cannot parse container/blob from URL: {url}")
+    # Azure: path starts directly with the container name
+    container = parts[0]
+    blob = "/".join(parts[1:])
+    if not container or not blob:
+        raise ValueError(f"Cannot parse container/blob from URL: {url}")
+    return container, blob
 
 
 async def write_generated_asset(
