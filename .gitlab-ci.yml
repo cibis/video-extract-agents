@@ -255,7 +255,7 @@ e2e_tests:
     - |
       echo "Waiting for API Gateway to be healthy (ACA cold start)..."
       for i in $(seq 1 40); do
-        STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$API_GATEWAY_URL/health" || true)
+        STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$API_GATEWAY_URL/health" || true)
         if [ "$STATUS" = "200" ]; then
           echo "API Gateway healthy after $i attempts."
           break
@@ -263,7 +263,14 @@ e2e_tests:
         echo "  attempt $i: status=$STATUS — retrying in 5s..."
         sleep 5
       done
-    - pytest tests/e2e/ -v --tb=short
+    - mkdir -p ci-logs
+    - pytest tests/e2e/ -v --tb=short 2>&1 | tee ci-logs/pytest.log || true
+  artifacts:
+    name: "e2e-pytest-${CI_PIPELINE_ID}"
+    paths:
+      - ci-logs/pytest.log
+    expire_in: 7d
+    when: always
 
 collect_e2e_logs:
   stage: collect_e2e_logs
