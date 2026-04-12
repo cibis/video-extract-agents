@@ -86,7 +86,7 @@ def upload_video(
     put_resp = client.put(
         upload_url,
         content=video_bytes,
-        headers={**auth_headers, "Content-Type": "video/mp4"},
+        headers={"Content-Type": "video/mp4", "x-ms-blob-type": "BlockBlob"},
     )
     put_resp.raise_for_status()
 
