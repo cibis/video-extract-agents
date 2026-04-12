@@ -266,7 +266,6 @@ e2e_tests:
     - mkdir -p ci-logs
     - pytest tests/e2e/ -v --tb=short 2>&1 | tee ci-logs/pytest.log || true
   artifacts:
-    name: "e2e-pytest-${CI_PIPELINE_ID}"
     paths:
       - ci-logs/pytest.log
     expire_in: 7d
@@ -277,6 +276,9 @@ collect_e2e_logs:
   image: mcr.microsoft.com/azure-cli:latest
   <<: *azure-login
   when: always
+  needs:
+    - job: e2e_tests
+      artifacts: true
   script:
     - RG="video-extract-test-${CI_PIPELINE_ID}"
     - SERVICES=(api-gateway agent-orchestrator preprocessing-worker notification-worker
