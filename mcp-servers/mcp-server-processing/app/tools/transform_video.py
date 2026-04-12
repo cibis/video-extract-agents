@@ -4,7 +4,7 @@ import os
 import tempfile
 import uuid
 from typing import Any
-from app.tools.blob_helper import upload_to_blob, make_blob_path
+from app.tools.blob_helper import upload_to_blob, make_blob_path, get_ffmpeg_accessible_url
 
 
 def _build_filter_chain(operations: list[dict]) -> str:
@@ -40,7 +40,7 @@ async def transform_video(payload: dict[str, Any]) -> dict[str, Any]:
     Output:
       output_url: str
     """
-    video_url = payload["video_url"]
+    video_url = get_ffmpeg_accessible_url(payload["video_url"])
     operations: list[dict] = payload.get("operations", [])
     job_id: str | None = payload.get("job_id") or None
     session_id: str | None = payload.get("session_id") or None

@@ -431,6 +431,82 @@ terraform destroy -auto-approve
 
 ---
 
+## Accessing the UI Per Environment
+
+### Local (docker-compose)
+
+All services are reachable on localhost directly:
+
+| Surface | URL | Notes |
+|---|---|---|
+| Angular shell | `http://localhost:4200` | Primary entry point; includes upload + job dashboard |
+| LibreChat (chat iframe) | `http://localhost:3080` | Also accessible standalone |
+| API Gateway | `http://localhost:8000` | REST API; auth bypassed via `LOCAL_DEV_SKIP_AUTH=true` |
+
+No login required locally — auth middleware injects a static dev identity automatically.
+
+---
+
+### Dev environment
+
+Two ACA container apps have external ingress. Retrieve their hostnames after `terraform apply`:
+
+```bash
+cd infrastructure/terraform/envs/dev
+
+# Show all outputs including FQDNs and the Front Door hostname
+terraform output
+```
+
+| Surface | How to reach it | Notes |
+|---|---|---|
+| Angular shell | ACA FQDN for `angular-shell` — shown in `terraform output` | External ingress, port 80, HTTPS |
+| LibreChat (standalone) | ACA FQDN for `librechat` — shown in `terraform output` | External ingress, port 3080 |
+| API Gateway (direct) | ACA FQDN for `api-gateway` — shown in `terraform output` | External ingress, port 8000 |
+| API Gateway (via CDN) | `https://<terraform output front_door_hostname>` | Front Door sits in front of api-gateway; use this URL for production-like testing |
+
+You can also look up FQDNs in the Azure Portal: **Container Apps** → select the app → **Overview** → **Application URL**.
+
+**Auth:** Azure Entra External ID magic link login. Use an account in the dev Entra tenant. The tenant and client IDs come from the `entra_tenant_id` / `entra_client_id` variables applied at deploy time.
+
+---
+
+### Prod environment
+
+Same approach as dev — retrieve FQDNs from `terraform output` in `envs/prod/`.
+
+```bash
+cd infrastructure/terraform/envs/prod
+terraform output
+```
+
+| Surface | How to reach it |
+|---|---|
+| Angular shell | `angular-shell` ACA FQDN (external ingress, port 80) |
+| LibreChat (standalone) | `librechat` ACA FQDN (external ingress, port 3080) |
+| API Gateway (via CDN) | `https://<terraform output front_door_hostname>` |
+
+**Auth:** Same Entra External ID magic link flow — use a prod-tenant account.
+
+> Front Door is the correct public entry for API traffic in both dev and prod. Direct ACA FQDNs bypass CDN caching and WAF; prefer Front Door for realistic testing.
+
+---
+
+### Test environment (ephemeral / CI)
+
+The test environment is created and destroyed automatically by the CI pipeline. It is designed for automated E2E tests, not interactive browser use. However, if you need to access it manually during a pipeline run:
+
+1. Find the pipeline's ACA resource group: `video-extract-test-<pipeline_id>`
+2. In the Azure Portal, navigate to **Container Apps** within that resource group
+3. Open `api-gateway` → **Application URL** for the API endpoint
+4. Open `angular-shell` → **Application URL** for the shell (external ingress, port 80)
+
+> Front Door is **not** provisioned for test environments. The `api-gateway` ACA FQDN is the API entry point directly.
+
+**Auth:** `LOCAL_DEV_SKIP_AUTH` is unset in CI — test environments use real Entra auth or a test identity injected via the CI service principal. Interactive browser login is not available; test flows use service credentials.
+
+---
+
 ## Tagging Strategy
 
 All resources are tagged consistently for cost allocation and automation:

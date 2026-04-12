@@ -1,7 +1,9 @@
 """Shared Blob Storage upload helper for processing tools."""
 import mimetypes
+from datetime import datetime, timedelta, timezone
+from urllib.parse import urlparse
 from azure.storage.blob.aio import BlobServiceClient
-from azure.storage.blob import ContentSettings
+from azure.storage.blob import BlobServiceClient as SyncBlobServiceClient, BlobSasPermissions, ContentSettings
 from app.config import settings
 
 
@@ -22,6 +24,39 @@ async def upload_to_blob(local_path: str, blob_path: str) -> str:
                 content_settings=ContentSettings(content_type=content_type),
             )
         return blob_client.url
+
+
+def _parse_container_blob(url: str) -> tuple[str, str]:
+    """Parse container name and blob path from a blob URL (Azurite and Azure)."""
+    parsed = urlparse(url)
+    parts = parsed.path.lstrip("/").split("/", 2)
+    if len(parts) == 3 and parts[0] == "devstoreaccount1":
+        return parts[1], parts[2]
+    container = parts[0]
+    blob = "/".join(parts[1:])
+    if not container or not blob:
+        raise ValueError(f"Cannot parse container/blob from URL: {url}")
+    return container, blob
+
+
+def get_ffmpeg_accessible_url(blob_url: str, expiry_hours: int = 1) -> str:
+    """Return a URL that FFmpeg can access.
+
+    Azurite URLs (local dev) are returned unchanged — Azurite allows anonymous access
+    inside Docker and this preserves existing local behaviour.
+    Azure blob URLs get a short-lived SAS read token so FFmpeg can authenticate.
+    """
+    if "azurite" in blob_url:
+        return blob_url
+    container, blob_name = _parse_container_blob(blob_url)
+    client = SyncBlobServiceClient.from_connection_string(
+        settings.azure_storage_connection_string
+    )
+    blob_client = client.get_blob_client(container=container, blob=blob_name)
+    return blob_client.generate_sas_url(
+        permission=BlobSasPermissions(read=True),
+        expiry=datetime.now(timezone.utc) + timedelta(hours=expiry_hours),
+    )
 
 
 def make_blob_path(

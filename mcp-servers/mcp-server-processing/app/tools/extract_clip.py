@@ -6,7 +6,7 @@ import tempfile
 import uuid
 from typing import Any
 
-from app.tools.blob_helper import upload_to_blob, make_blob_path
+from app.tools.blob_helper import upload_to_blob, make_blob_path, get_ffmpeg_accessible_url
 from app.tools.generated_asset_store import append_to_clip_list
 
 logger = logging.getLogger(__name__)
@@ -32,7 +32,7 @@ async def extract_clip(payload: dict[str, Any]) -> dict[str, Any]:
       clip_list_asset: str — blob URL of updated clip list (pass to next extract_clip or merge_clips)
       clips_collected: int — total clips accumulated so far
     """
-    video_url = payload["video_url"]
+    video_url = get_ffmpeg_accessible_url(payload["video_url"])
     start = max(0.0, float(payload["start_seconds"]))
     end = float(payload["end_seconds"])
     job_id: str = payload.get("job_id", "")

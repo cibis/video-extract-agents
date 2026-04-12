@@ -6,7 +6,7 @@ import tempfile
 import uuid
 from typing import Any, Callable
 
-from app.tools.blob_helper import upload_to_blob, make_blob_path
+from app.tools.blob_helper import upload_to_blob, make_blob_path, get_ffmpeg_accessible_url
 from app.tools.generated_asset_store import read_generated_asset, write_generated_asset
 
 logger = logging.getLogger(__name__)
@@ -90,7 +90,7 @@ async def extract_clips_bulk(
 
             proc = await asyncio.create_subprocess_exec(
                 "ffmpeg",
-                "-i", seg_video_url,
+                "-i", get_ffmpeg_accessible_url(seg_video_url),
                 "-ss", str(start),
                 "-to", str(end),
                 "-c:v", "libx264", "-preset", "fast",

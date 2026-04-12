@@ -6,7 +6,7 @@ import tempfile
 import uuid
 from typing import Any, Callable
 
-from app.tools.blob_helper import upload_to_blob, make_blob_path
+from app.tools.blob_helper import upload_to_blob, make_blob_path, get_ffmpeg_accessible_url
 from app.tools.generated_asset_store import read_generated_asset
 
 logger = logging.getLogger(__name__)
@@ -49,7 +49,7 @@ async def merge_clips(
         for i, url in enumerate(clip_urls):
             clip_path = os.path.join(tmpdir, f"clip_{i:04d}.mp4")
             dl_proc = await asyncio.create_subprocess_exec(
-                "ffmpeg", "-i", url, "-c", "copy", clip_path, "-y",
+                "ffmpeg", "-i", get_ffmpeg_accessible_url(url), "-c", "copy", clip_path, "-y",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )

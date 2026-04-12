@@ -15,14 +15,25 @@ async def get_pool() -> asyncpg.Pool:
     global _pool
     if _pool is None:
         url = settings.database_url.replace("postgresql+asyncpg://", "postgresql://")
-        _pool = await asyncpg.create_pool(url)
+        _pool = await asyncpg.create_pool(url, max_inactive_connection_lifetime=300)
     return _pool
+
+
+async def _get_pool_safe() -> asyncpg.Pool:
+    """Get pool, recreating it if it has become unhealthy."""
+    global _pool
+    try:
+        return await get_pool()
+    except Exception:
+        logger.warning("DB pool unhealthy, recreating", exc_info=True)
+        _pool = None
+        return await get_pool()
 
 
 async def get_app_setting(key: str) -> str | None:
     """Fetch a single app_settings value by key. Returns None if not found."""
     try:
-        pool = await get_pool()
+        pool = await _get_pool_safe()
         row = await pool.fetchrow("SELECT value FROM app_settings WHERE key = $1", key)
         return row["value"] if row else None
     except Exception:
@@ -37,7 +48,7 @@ async def get_model_context_window(model_name: str) -> tuple[int, float]:
     Always queries DB — no caching — so runtime updates take effect immediately.
     """
     try:
-        pool = await get_pool()
+        pool = await _get_pool_safe()
         row = await pool.fetchrow(
             "SELECT context_window_tokens, safety_margin FROM model_context_windows WHERE model_name = $1",
             model_name,
@@ -56,7 +67,7 @@ async def get_model_context_window(model_name: str) -> tuple[int, float]:
 async def get_keyframe_index(video_url: str) -> list[dict[str, Any]]:
     """Fetch keyframe index for a video by its original URL."""
     try:
-        pool = await get_pool()
+        pool = await _get_pool_safe()
         rows = await pool.fetch(
             """SELECT ki.frame_index, ki.frame_url, ki.timestamp_seconds
                FROM video_keyframe_index ki
