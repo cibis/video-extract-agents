@@ -52,6 +52,22 @@ export function getAzuriteBlobUrl(blobPath: string): string {
 }
 
 /**
+ * Returns the internal blob URL used by backend services to read a video.
+ * In local dev: Azurite URL (http://azurite:10000/...).
+ * In CI/prod: Azure Blob Storage URL derived from the storage connection string.
+ */
+export function getInternalBlobUrl(blobPath: string): string {
+  if (config.OUTPUT_URL_MODE === 'local') {
+    return getAzuriteBlobUrl(blobPath);
+  }
+  const client = getBlobServiceClient();
+  return client
+    .getContainerClient(config.AZURE_STORAGE_CONTAINER_NAME)
+    .getBlobClient(blobPath)
+    .url;
+}
+
+/**
  * Delete a single blob by container + blob path. Silently ignores 404.
  */
 export async function deleteBlob(containerName: string, blobPath: string): Promise<void> {

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { createAssetRecord, createSessionAssetRecord, getAssetById } from '../services/dbService';
-import { generateSasUploadUrl, generateSignedDownloadUrl } from '../services/blobService';
+import { generateSasUploadUrl, generateSignedDownloadUrl, getInternalBlobUrl } from '../services/blobService';
 import { config } from '../config';
 
 export const assetsRouter = Router();
@@ -26,7 +26,7 @@ assetsRouter.post('/', async (req, res, next) => {
     const { sasUrl } = await generateSasUploadUrl(userId, `assets/${assetId}/${filename}`);
 
     // Internal blob URL used by backend services to read the asset
-    const blobUrl = `http://azurite:10000/devstoreaccount1/${config.AZURE_STORAGE_CONTAINER_NAME}/${blobPath}`;
+    const blobUrl = getInternalBlobUrl(blobPath);
 
     // Upload URL returned to the browser — blob-proxy in local dev, SAS URL in CI/prod
     const uploadUrl = config.OUTPUT_URL_MODE === 'local'

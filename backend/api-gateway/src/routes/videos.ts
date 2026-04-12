@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import { generateSasUploadUrl } from '../services/blobService';
+import { generateSasUploadUrl, getInternalBlobUrl } from '../services/blobService';
 import { createVideoRecord, ensureSessionExists, createSessionAssetRecord } from '../services/dbService';
 import { publishVideoUploaded } from '../services/serviceBusService';
 import { registerPendingUpload } from '../services/pendingUploads';
@@ -17,7 +17,7 @@ videosRouter.post('/', async (req, res, next) => {
     const { sasUrl, blobPath } = await generateSasUploadUrl(userId, videoId, filename);
 
     // Internal blob URL (used by backend services to read the video)
-    const blobUrl = `http://azurite:10000/devstoreaccount1/${config.AZURE_STORAGE_CONTAINER_NAME}/${blobPath}`;
+    const blobUrl = getInternalBlobUrl(blobPath);
 
     // Upload URL returned to the browser
     const uploadUrl = config.OUTPUT_URL_MODE === 'local'
