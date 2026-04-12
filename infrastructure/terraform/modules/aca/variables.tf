@@ -168,6 +168,12 @@ variable "local_dev_skip_auth" {
   description = "Set LOCAL_DEV_SKIP_AUTH=true on api-gateway; used in ephemeral test environments only"
 }
 
+variable "postgres_persistent_volume" {
+  type        = bool
+  default     = true
+  description = "Mount an Azure Files volume for PostgreSQL data persistence. Set false in ephemeral test environments — Azure Files SMB does not support chmod, which causes initdb to fail on cold starts."
+}
+
 variable "tags" {
   type    = map(string)
   default = {}

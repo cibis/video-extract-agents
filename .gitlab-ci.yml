@@ -264,7 +264,7 @@ e2e_tests:
         sleep 5
       done
     - mkdir -p ci-logs
-    - pytest tests/e2e/ -v --tb=short 2>&1 | tee ci-logs/pytest.log || true
+    - set -o pipefail; pytest tests/e2e/ -v --tb=short 2>&1 | tee ci-logs/pytest.log
   artifacts:
     paths:
       - ci-logs/pytest.log

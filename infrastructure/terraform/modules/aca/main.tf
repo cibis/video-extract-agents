@@ -6,16 +6,18 @@ locals {
 # ─── PostgreSQL (container) ───────────────────────────────────────────────────
 
 resource "azurerm_storage_share" "postgres_data" {
+  count              = var.postgres_persistent_volume ? 1 : 0
   name               = "postgres-data"
   storage_account_id = var.storage_account_id
   quota              = var.db_storage_gb
 }
 
 resource "azurerm_container_app_environment_storage" "postgres_data" {
+  count                        = var.postgres_persistent_volume ? 1 : 0
   name                         = "postgres-data"
   container_app_environment_id = azurerm_container_app_environment.main.id
   account_name                 = var.storage_account_name
-  share_name                   = azurerm_storage_share.postgres_data.name
+  share_name                   = azurerm_storage_share.postgres_data[0].name
   access_key                   = var.storage_account_key
   access_mode                  = "ReadWrite"
 }
@@ -49,16 +51,20 @@ resource "azurerm_container_app" "postgresql" {
         name        = "POSTGRES_PASSWORD"
         secret_name = "db-admin-password"
       }
-      # PGDATA must be a subdirectory of the Azure Files mount — Azure Files
-      # creates a lost+found dir at the root which prevents postgres startup.
+      # When using Azure Files (SMB), PGDATA must be a subdirectory because
+      # Azure Files creates a lost+found dir at the root which prevents postgres
+      # startup. When not using Azure Files (ephemeral/test), use the default path.
       env {
         name  = "PGDATA"
-        value = "/var/lib/postgresql/data/pgdata"
+        value = var.postgres_persistent_volume ? "/var/lib/postgresql/data/pgdata" : "/var/lib/postgresql/data"
       }
 
-      volume_mounts {
-        name = "postgres-data"
-        path = "/var/lib/postgresql/data"
+      dynamic "volume_mounts" {
+        for_each = var.postgres_persistent_volume ? [1] : []
+        content {
+          name = "postgres-data"
+          path = "/var/lib/postgresql/data"
+        }
       }
 
       liveness_probe {
@@ -71,10 +77,13 @@ resource "azurerm_container_app" "postgresql" {
       }
     }
 
-    volume {
-      name         = "postgres-data"
-      storage_type = "AzureFile"
-      storage_name = azurerm_container_app_environment_storage.postgres_data.name
+    dynamic "volume" {
+      for_each = var.postgres_persistent_volume ? [1] : []
+      content {
+        name         = "postgres-data"
+        storage_type = "AzureFile"
+        storage_name = azurerm_container_app_environment_storage.postgres_data[0].name
+      }
     }
   }
 
