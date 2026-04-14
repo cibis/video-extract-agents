@@ -14,13 +14,14 @@ from tests.e2e.helpers import (
     assert_job_succeeded,
     assert_tool_invoked,
     create_test_session,
+    submit_job,
     upload_video,
     wait_for_indexed,
     wait_for_job,
 )
 
 
-def test_estimate_height_above_surface_pipeline(tmp_path, api_gateway_url, http_client, auth_headers):
+def test_estimate_height_above_surface_pipeline(request, tmp_path, api_gateway_url, http_client, auth_headers):
     """
     Full pipeline test for the estimate_height_above_surface tool.
 
@@ -51,21 +52,17 @@ def test_estimate_height_above_surface_pipeline(tmp_path, api_gateway_url, http_
     # 4. Submit job — height/POV/surface language steers planner toward
     #    estimate_height_above_surface; "first-person" / "above the ground"
     #    rules out generic motion or object detection
-    job_resp = http_client.post(
-        f"{api_gateway_url}/v1/jobs",
-        json={
-            "videoId": video_id,
-            "sessionId": session_id,
-            "prompt": (
-                "Estimate the camera height above the ground surface in this "
-                "first-person POV footage and identify any moments where the "
-                "camera is elevated above the surface"
-            ),
-        },
-        headers=auth_headers,
+    job_data = submit_job(
+        http_client, api_gateway_url, auth_headers,
+        video_id=video_id, session_id=session_id,
+        prompt=(
+            "Estimate the camera height above the ground surface in this "
+            "first-person POV footage and identify any moments where the "
+            "camera is elevated above the surface"
+        ),
+        test_name=request.node.nodeid,
     )
-    job_resp.raise_for_status()
-    job_id = job_resp.json()["jobId"]
+    job_id = job_data["jobId"]
 
     # 5. Poll to completion — DA-V2 Metric runs per frame on CPU; allow extra time
     job = wait_for_job(http_client, api_gateway_url, auth_headers, job_id)
@@ -83,7 +80,7 @@ def test_estimate_height_above_surface_pipeline(tmp_path, api_gateway_url, http_
 
 
 def test_estimate_height_above_surface_analysis_asset_registered(
-    tmp_path, api_gateway_url, http_client, auth_headers
+    request, tmp_path, api_gateway_url, http_client, auth_headers
 ):
     """
     After a successful height estimation job, the analysis result is registered
@@ -100,21 +97,17 @@ def test_estimate_height_above_surface_analysis_asset_registered(
 
     wait_for_indexed(http_client, api_gateway_url, auth_headers, session_id)
 
-    job_resp = http_client.post(
-        f"{api_gateway_url}/v1/jobs",
-        json={
-            "videoId": video_id,
-            "sessionId": session_id,
-            "prompt": (
-                "Estimate the camera height above the ground surface in this "
-                "first-person POV footage and identify any moments where the "
-                "camera is elevated above the surface"
-            ),
-        },
-        headers=auth_headers,
+    job_data = submit_job(
+        http_client, api_gateway_url, auth_headers,
+        video_id=video_id, session_id=session_id,
+        prompt=(
+            "Estimate the camera height above the ground surface in this "
+            "first-person POV footage and identify any moments where the "
+            "camera is elevated above the surface"
+        ),
+        test_name=request.node.nodeid,
     )
-    job_resp.raise_for_status()
-    job_id = job_resp.json()["jobId"]
+    job_id = job_data["jobId"]
 
     job = wait_for_job(http_client, api_gateway_url, auth_headers, job_id)
     assert_job_succeeded(job)

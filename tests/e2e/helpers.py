@@ -182,6 +182,38 @@ def wait_for_job(
 
 
 # ---------------------------------------------------------------------------
+# Job submission
+# ---------------------------------------------------------------------------
+
+def submit_job(
+    client: httpx.Client,
+    base_url: str,
+    auth_headers: dict,
+    video_id: str,
+    session_id: str,
+    prompt: str,
+    parent_job_id: str | None = None,
+    test_name: str | None = None,
+) -> dict:
+    """
+    POST /v1/jobs and return the response dict.
+
+    If test_name is provided, registers the job ID with the session-level
+    job registry so collect_e2e_logs can fetch per-test action logs.
+    """
+    from tests.e2e.conftest import register_job
+    body: dict = {"videoId": video_id, "sessionId": session_id, "prompt": prompt}
+    if parent_job_id:
+        body["parentJobId"] = parent_job_id
+    resp = client.post(f"{base_url}/v1/jobs", json=body, headers=auth_headers)
+    resp.raise_for_status()
+    job = resp.json()
+    if test_name:
+        register_job(test_name, job["jobId"])
+    return job
+
+
+# ---------------------------------------------------------------------------
 # Assertions
 # ---------------------------------------------------------------------------
 

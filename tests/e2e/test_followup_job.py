@@ -31,6 +31,7 @@ from tests.e2e import video_factory
 from tests.e2e.helpers import (
     assert_job_succeeded,
     create_test_session,
+    submit_job,
     upload_video,
     wait_for_indexed,
     wait_for_job,
@@ -41,7 +42,7 @@ from tests.e2e.helpers import (
 # Scenario 1: Multi-video session — Job 2 references Job 1 across videos
 # ---------------------------------------------------------------------------
 
-def test_followup_multi_video_session(tmp_path, api_gateway_url, http_client, auth_headers):
+def test_followup_multi_video_session(request, tmp_path, api_gateway_url, http_client, auth_headers):
     """
     Two different videos are uploaded to the same session. Job 1 processes
     the first video. Job 2 processes the second video with parentJobId pointing
@@ -67,36 +68,28 @@ def test_followup_multi_video_session(tmp_path, api_gateway_url, http_client, au
     wait_for_indexed(http_client, api_gateway_url, auth_headers, session_id)
 
     # Job 1 — extract motion from video 1
-    j1_resp = http_client.post(
-        f"{api_gateway_url}/v1/jobs",
-        json={
-            "videoId": video1_id,
-            "sessionId": session_id,
-            "prompt": "Extract all motion segments from this video",
-        },
-        headers=auth_headers,
+    j1 = submit_job(
+        http_client, api_gateway_url, auth_headers,
+        video_id=video1_id, session_id=session_id,
+        prompt="Extract all motion segments from this video",
+        test_name=request.node.nodeid,
     )
-    j1_resp.raise_for_status()
-    job1_id = j1_resp.json()["jobId"]
+    job1_id = j1["jobId"]
     job1 = wait_for_job(http_client, api_gateway_url, auth_headers, job1_id)
     assert_job_succeeded(job1)
 
     # Job 2 — process video 2, merge with previous job output
-    j2_resp = http_client.post(
-        f"{api_gateway_url}/v1/jobs",
-        json={
-            "videoId": video2_id,
-            "sessionId": session_id,
-            "parentJobId": job1_id,
-            "prompt": (
-                "Extract sports action moments from this video, "
-                "then merge them with the highlight reel from the previous job"
-            ),
-        },
-        headers=auth_headers,
+    j2 = submit_job(
+        http_client, api_gateway_url, auth_headers,
+        video_id=video2_id, session_id=session_id,
+        parent_job_id=job1_id,
+        prompt=(
+            "Extract sports action moments from this video, "
+            "then merge them with the highlight reel from the previous job"
+        ),
+        test_name=request.node.nodeid,
     )
-    j2_resp.raise_for_status()
-    job2_id = j2_resp.json()["jobId"]
+    job2_id = j2["jobId"]
     job2 = wait_for_job(http_client, api_gateway_url, auth_headers, job2_id)
     assert_job_succeeded(job2)
 
@@ -117,7 +110,7 @@ def test_followup_multi_video_session(tmp_path, api_gateway_url, http_client, au
 # Scenario 2: Extract → Slow-motion re-transform
 # ---------------------------------------------------------------------------
 
-def test_followup_slow_motion_retransform(tmp_path, api_gateway_url, http_client, auth_headers):
+def test_followup_slow_motion_retransform(request, tmp_path, api_gateway_url, http_client, auth_headers):
     """
     Job 1 extracts motion segments and produces a merged output.
     Job 2 applies slow-motion (0.5x speed) to Job 1's output, creating a
@@ -137,33 +130,25 @@ def test_followup_slow_motion_retransform(tmp_path, api_gateway_url, http_client
     wait_for_indexed(http_client, api_gateway_url, auth_headers, session_id)
 
     # Job 1 — extract moving segments
-    j1_resp = http_client.post(
-        f"{api_gateway_url}/v1/jobs",
-        json={
-            "videoId": video_id,
-            "sessionId": session_id,
-            "prompt": "Extract all segments with movement",
-        },
-        headers=auth_headers,
+    j1 = submit_job(
+        http_client, api_gateway_url, auth_headers,
+        video_id=video_id, session_id=session_id,
+        prompt="Extract all segments with movement",
+        test_name=request.node.nodeid,
     )
-    j1_resp.raise_for_status()
-    job1_id = j1_resp.json()["jobId"]
+    job1_id = j1["jobId"]
     job1 = wait_for_job(http_client, api_gateway_url, auth_headers, job1_id)
     assert_job_succeeded(job1)
 
     # Job 2 — slow down Job 1's output to 0.5x
-    j2_resp = http_client.post(
-        f"{api_gateway_url}/v1/jobs",
-        json={
-            "videoId": video_id,
-            "sessionId": session_id,
-            "parentJobId": job1_id,
-            "prompt": "Transform the output from the previous job to slow motion at 0.5x speed",
-        },
-        headers=auth_headers,
+    j2 = submit_job(
+        http_client, api_gateway_url, auth_headers,
+        video_id=video_id, session_id=session_id,
+        parent_job_id=job1_id,
+        prompt="Transform the output from the previous job to slow motion at 0.5x speed",
+        test_name=request.node.nodeid,
     )
-    j2_resp.raise_for_status()
-    job2_id = j2_resp.json()["jobId"]
+    job2_id = j2["jobId"]
     job2 = wait_for_job(http_client, api_gateway_url, auth_headers, job2_id)
     assert_job_succeeded(job2)
 
@@ -184,7 +169,7 @@ def test_followup_slow_motion_retransform(tmp_path, api_gateway_url, http_client
 # Scenario 3: Job history assets — analysis results registered and reusable
 # ---------------------------------------------------------------------------
 
-def test_followup_job_history_assets(tmp_path, api_gateway_url, http_client, auth_headers):
+def test_followup_job_history_assets(request, tmp_path, api_gateway_url, http_client, auth_headers):
     """
     After Job 1 completes, the orchestrator must register its analysis tool
     result blobs (detect_objects JSON, merged segments JSON, etc.) as
@@ -211,17 +196,13 @@ def test_followup_job_history_assets(tmp_path, api_gateway_url, http_client, aut
 
     # Job 1 — motion detection: synthetic video reliably produces segments,
     # and detect_motion writes a result_asset JSON registered in session_assets
-    j1_resp = http_client.post(
-        f"{api_gateway_url}/v1/jobs",
-        json={
-            "videoId": video_id,
-            "sessionId": session_id,
-            "prompt": "Extract all segments with significant movement and motion",
-        },
-        headers=auth_headers,
+    j1 = submit_job(
+        http_client, api_gateway_url, auth_headers,
+        video_id=video_id, session_id=session_id,
+        prompt="Extract all segments with significant movement and motion",
+        test_name=request.node.nodeid,
     )
-    j1_resp.raise_for_status()
-    job1_id = j1_resp.json()["jobId"]
+    job1_id = j1["jobId"]
     job1 = wait_for_job(http_client, api_gateway_url, auth_headers, job1_id)
     assert_job_succeeded(job1)
 
@@ -263,18 +244,14 @@ def test_followup_job_history_assets(tmp_path, api_gateway_url, http_client, aut
         )
 
     # Job 2 — follow-up referencing Job 1 via parentJobId
-    j2_resp = http_client.post(
-        f"{api_gateway_url}/v1/jobs",
-        json={
-            "videoId": video_id,
-            "sessionId": session_id,
-            "parentJobId": job1_id,
-            "prompt": "Speed up the output from the previous job by 2x",
-        },
-        headers=auth_headers,
+    j2 = submit_job(
+        http_client, api_gateway_url, auth_headers,
+        video_id=video_id, session_id=session_id,
+        parent_job_id=job1_id,
+        prompt="Speed up the output from the previous job by 2x",
+        test_name=request.node.nodeid,
     )
-    j2_resp.raise_for_status()
-    job2_id = j2_resp.json()["jobId"]
+    job2_id = j2["jobId"]
     job2 = wait_for_job(http_client, api_gateway_url, auth_headers, job2_id)
     assert_job_succeeded(job2)
 

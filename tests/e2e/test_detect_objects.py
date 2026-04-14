@@ -21,13 +21,14 @@ from tests.e2e.helpers import (
     assert_job_succeeded,
     assert_tool_invoked,
     create_test_session,
+    submit_job,
     upload_video,
     wait_for_indexed,
     wait_for_job,
 )
 
 
-def test_detect_objects_pipeline(tmp_path, api_gateway_url, http_client, auth_headers):
+def test_detect_objects_pipeline(request, tmp_path, api_gateway_url, http_client, auth_headers):
     """
     Full pipeline test for the detect_objects tool (YOLOv8n).
 
@@ -54,17 +55,13 @@ def test_detect_objects_pipeline(tmp_path, api_gateway_url, http_client, auth_he
     wait_for_indexed(http_client, api_gateway_url, auth_headers, session_id)
 
     # 4. Submit job — standard COCO class ("person") targets detect_objects
-    job_resp = http_client.post(
-        f"{api_gateway_url}/v1/jobs",
-        json={
-            "videoId": video_id,
-            "sessionId": session_id,
-            "prompt": "Extract all segments containing a person",
-        },
-        headers=auth_headers,
+    job = submit_job(
+        http_client, api_gateway_url, auth_headers,
+        video_id=video_id, session_id=session_id,
+        prompt="Extract all segments containing a person",
+        test_name=request.node.nodeid,
     )
-    job_resp.raise_for_status()
-    job_id = job_resp.json()["jobId"]
+    job_id = job["jobId"]
 
     # 5. Poll to completion
     job = wait_for_job(http_client, api_gateway_url, auth_headers, job_id)

@@ -22,13 +22,14 @@ from tests.e2e.helpers import (
     assert_job_succeeded,
     assert_tool_invoked,
     create_test_session,
+    submit_job,
     upload_video,
     wait_for_indexed,
     wait_for_job,
 )
 
 
-def test_transcribe_audio_pipeline(tmp_path, api_gateway_url, http_client, auth_headers):
+def test_transcribe_audio_pipeline(request, tmp_path, api_gateway_url, http_client, auth_headers):
     """
     Full pipeline test for the transcribe_audio tool (local Whisper).
 
@@ -55,17 +56,13 @@ def test_transcribe_audio_pipeline(tmp_path, api_gateway_url, http_client, auth_
     wait_for_indexed(http_client, api_gateway_url, auth_headers, session_id)
 
     # 4. Submit job — audio/speech language routes to transcribe_audio
-    job_resp = http_client.post(
-        f"{api_gateway_url}/v1/jobs",
-        json={
-            "videoId": video_id,
-            "sessionId": session_id,
-            "prompt": "Extract segments based on speech and audio content in this video",
-        },
-        headers=auth_headers,
+    job = submit_job(
+        http_client, api_gateway_url, auth_headers,
+        video_id=video_id, session_id=session_id,
+        prompt="Extract segments based on speech and audio content in this video",
+        test_name=request.node.nodeid,
     )
-    job_resp.raise_for_status()
-    job_id = job_resp.json()["jobId"]
+    job_id = job["jobId"]
 
     # 5. Poll to completion — Whisper model load can take ~30s on first call
     job = wait_for_job(http_client, api_gateway_url, auth_headers, job_id, timeout=240)

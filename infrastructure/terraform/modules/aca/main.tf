@@ -384,6 +384,10 @@ resource "azurerm_container_app" "mcp_server_analysis" {
         value = var.aws_region_name
       }
       env {
+        name  = "DATABASE_URL"
+        value = local.database_url_asyncpg
+      }
+      env {
         name  = "APPLICATIONINSIGHTS_CONNECTION_STRING"
         value = var.appinsights_connection_string
       }

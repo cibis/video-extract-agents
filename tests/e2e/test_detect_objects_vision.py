@@ -14,13 +14,14 @@ from tests.e2e.helpers import (
     assert_job_succeeded,
     assert_tool_invoked,
     create_test_session,
+    submit_job,
     upload_video,
     wait_for_indexed,
     wait_for_job,
 )
 
 
-def test_detect_objects_vision_pipeline(frontier_model_available, tmp_path, api_gateway_url, http_client, auth_headers):
+def test_detect_objects_vision_pipeline(request, frontier_model_available, tmp_path, api_gateway_url, http_client, auth_headers):
     if not frontier_model_available:
         pytest.skip("Frontier model credentials not configured for the active tool_frontier_model")
     """
@@ -52,20 +53,16 @@ def test_detect_objects_vision_pipeline(frontier_model_available, tmp_path, api_
     wait_for_indexed(http_client, api_gateway_url, auth_headers, session_id)
 
     # 4. Submit job — open-vocabulary description not in COCO; routes to vision tool
-    job_resp = http_client.post(
-        f"{api_gateway_url}/v1/jobs",
-        json={
-            "videoId": video_id,
-            "sessionId": session_id,
-            "prompt": (
-                "Extract all segments containing colourful geometric patterns "
-                "or abstract shapes use strictly detect_objects_vision for detection"
-            ),
-        },
-        headers=auth_headers,
+    job = submit_job(
+        http_client, api_gateway_url, auth_headers,
+        video_id=video_id, session_id=session_id,
+        prompt=(
+            "Extract all segments containing colourful geometric patterns "
+            "or abstract shapes use strictly detect_objects_vision for detection"
+        ),
+        test_name=request.node.nodeid,
     )
-    job_resp.raise_for_status()
-    job_id = job_resp.json()["jobId"]
+    job_id = job["jobId"]
 
     # 5. Poll to completion (allow extra time for Claude API calls)
     job = wait_for_job(http_client, api_gateway_url, auth_headers, job_id, timeout=240)

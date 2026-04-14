@@ -3,9 +3,30 @@ E2E test configuration.
 Tests run against the local docker-compose stack (docker-compose up -d).
 All service URLs come from environment variables — never hardcoded.
 """
+import json
 import os
 import pytest
 import httpx
+
+# ---------------------------------------------------------------------------
+# Job registry — maps test node IDs to job IDs for artifact log collection
+# ---------------------------------------------------------------------------
+
+_job_registry: dict[str, list[str]] = {}
+
+
+def register_job(test_name: str, job_id: str) -> None:
+    """Register a job ID under a test name. Called by submit_job() in helpers."""
+    _job_registry.setdefault(test_name, []).append(job_id)
+
+
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    """Write test→job-id mapping to ci-logs/ after all tests complete."""
+    out_dir = os.environ.get("CI_LOGS_DIR", "ci-logs")
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, "test-job-ids.json")
+    with open(out_path, "w") as f:
+        json.dump(_job_registry, f, indent=2)
 
 API_GATEWAY_URL = os.environ.get("API_GATEWAY_URL", "http://localhost:8000")
 MCP_ANALYSIS_URL = os.environ.get("MCP_ANALYSIS_URL", "http://localhost:8100")

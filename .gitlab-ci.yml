@@ -272,6 +272,7 @@ e2e_tests:
   artifacts:
     paths:
       - ci-logs/pytest.log
+      - ci-logs/test-job-ids.json
     expire_in: 7d
     when: always
 
@@ -339,6 +340,16 @@ collect_e2e_logs:
             --query "{queue:name, active:countDetails.activeMessageCount, dead:countDetails.deadLetterMessageCount}" \
             --output json 2>&1 >> ci-logs/servicebus.log || true
         done
+      fi
+    - |
+      # --- Per-test action logs from API ---
+      OUTPUTS="infrastructure/terraform/envs/test/tf-outputs.json"
+      export API_GW_URL="https://$(python3 -c 'import json; print(json.load(open("'"$OUTPUTS"'"))["api_gateway_fqdn"]["value"])')"
+      mkdir -p ci-logs/tests
+      if [ -f ci-logs/test-job-ids.json ]; then
+        python3 scripts/collect_test_logs.py
+      else
+        echo "ci-logs/test-job-ids.json not found — skipping per-test log collection"
       fi
     - echo "Log collection complete. Files:" && ls -lh ci-logs/
   artifacts:
