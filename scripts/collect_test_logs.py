@@ -16,9 +16,18 @@ Output:
 """
 import json
 import os
+import sys
 import urllib.request
 
-api_gw = os.environ["API_GW_URL"]
+api_gw = os.environ.get("API_GW_URL", "").rstrip("/")
+if not api_gw or not api_gw.startswith("https://") or len(api_gw) <= len("https://"):
+    print(
+        f"ERROR: API_GW_URL is not set or has no hostname ({api_gw!r}). "
+        "Ensure the collect_e2e_logs CI job exports API_GW_URL before calling this script.",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
 auth = "Bearer local-dev-skip-auth"
 
 with open("ci-logs/test-job-ids.json") as f:

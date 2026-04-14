@@ -62,6 +62,18 @@ async def send_failure_notification(
     await _dispatch_email(email)
 
 
+def _is_valid_email(address: str) -> bool:
+    """Return True only when address looks like a real deliverable email.
+
+    Rejects empty strings, None, and synthetic values such as 'dev@local'
+    (no dot in the domain part) that appear in test/dev environments.
+    """
+    if not address or "@" not in address:
+        return False
+    _, domain = address.rsplit("@", 1)
+    return "." in domain
+
+
 async def _dispatch_email(email: dict) -> None:
     if settings.notification_mode == "stdout":
         logger.info(
@@ -72,14 +84,24 @@ async def _dispatch_email(email: dict) -> None:
         )
         return
 
-    # ACS mode
+    # ACS mode — validate before calling ACS to avoid dead-lettering on
+    # synthetic addresses (e.g. 'dev@local') used in CI / local dev.
+    recipient = email.get("to", "")
+    if not _is_valid_email(recipient):
+        logger.warning(
+            "Skipping ACS send — non-deliverable address %r (no dot in domain). "
+            "Update the user record with a real email to receive notifications.",
+            recipient,
+        )
+        return
+
     from azure.communication.email import EmailClient
     client = EmailClient.from_connection_string(
         settings.azure_communication_services_connection_string
     )
     message = {
         "senderAddress": settings.sender_email,
-        "recipients": {"to": [{"address": email["to"]}]},
+        "recipients": {"to": [{"address": recipient}]},
         "content": {
             "subject": email["subject"],
             "plainText": email["body"],

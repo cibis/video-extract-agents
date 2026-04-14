@@ -344,10 +344,20 @@ collect_e2e_logs:
     - |
       # --- Per-test action logs from API ---
       OUTPUTS="infrastructure/terraform/envs/test/tf-outputs.json"
-      export API_GW_URL="https://$(python3 -c 'import json; print(json.load(open("'"$OUTPUTS"'"))["api_gateway_fqdn"]["value"])')"
+      API_GW_FQDN=""
+      if [ -f "$OUTPUTS" ]; then
+        API_GW_FQDN=$(python3 -c \
+          'import json,sys; d=json.load(open(sys.argv[1])); print(d.get("api_gateway_fqdn",{}).get("value",""))' \
+          "$OUTPUTS" 2>/dev/null || true)
+      fi
       mkdir -p ci-logs/tests
       if [ -f ci-logs/test-job-ids.json ]; then
-        python3 scripts/collect_test_logs.py
+        if [ -n "$API_GW_FQDN" ]; then
+          export API_GW_URL="https://${API_GW_FQDN}"
+          python3 scripts/collect_test_logs.py
+        else
+          echo "Could not determine API_GW_URL from $OUTPUTS — skipping per-test log collection" | tee ci-logs/tests/collection-skipped.log
+        fi
       else
         echo "ci-logs/test-job-ids.json not found — skipping per-test log collection"
       fi

@@ -1,5 +1,6 @@
 _private-cmd.md
 gitlab-logs
+ci-logs
 # ── Secrets & environment ──────────────────────────────────────────────────
 .env
 .env.*

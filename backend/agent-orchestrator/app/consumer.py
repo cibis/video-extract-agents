@@ -112,6 +112,25 @@ async def process_job_message(message_body: dict) -> None:
         logger.warning("Could not publish job result for %s (non-fatal): %s", job_id, exc)
 
 
+async def _renew_lock(receiver, msg, interval: int = 45) -> None:
+    """Renew a Service Bus message lock every `interval` seconds.
+
+    Keeps long-running jobs (frontier model calls, multi-step crews) from
+    losing their lock on the Standard-tier emitter (default lock = 60 s).
+    Cancelled by the caller as soon as processing finishes.
+    """
+    while True:
+        await asyncio.sleep(interval)
+        try:
+            await receiver.renew_message_lock(msg)
+            logger.debug("Renewed SB message lock for %s", getattr(msg, "message_id", "?"))
+        except asyncio.CancelledError:
+            break
+        except Exception as exc:
+            logger.warning("Failed to renew SB message lock (non-fatal): %s", exc)
+            break
+
+
 async def run_consumer() -> None:
     """Consume job-queued messages indefinitely, reconnecting on failure."""
     backoff = 2
@@ -127,6 +146,7 @@ async def run_consumer() -> None:
                     while True:
                         messages = await receiver.receive_messages(max_message_count=1, max_wait_time=5)
                         for msg in messages:
+                            renewer = asyncio.create_task(_renew_lock(receiver, msg))
                             try:
                                 body = json.loads(str(msg))
                                 await process_job_message(body)
@@ -134,6 +154,8 @@ async def run_consumer() -> None:
                             except Exception as exc:
                                 logger.error("Failed to process message: %s", exc)
                                 await receiver.abandon_message(msg)
+                            finally:
+                                renewer.cancel()
                         await asyncio.sleep(1)
         except asyncio.CancelledError:
             raise
