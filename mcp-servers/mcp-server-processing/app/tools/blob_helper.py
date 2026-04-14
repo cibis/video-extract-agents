@@ -3,7 +3,7 @@ import mimetypes
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse
 from azure.storage.blob.aio import BlobServiceClient
-from azure.storage.blob import BlobServiceClient as SyncBlobServiceClient, BlobSasPermissions, ContentSettings
+from azure.storage.blob import ContentSettings, generate_blob_sas, BlobSasPermissions
 from app.config import settings
 
 
@@ -39,6 +39,11 @@ def _parse_container_blob(url: str) -> tuple[str, str]:
     return container, blob
 
 
+def _parse_connection_string(conn_str: str) -> dict[str, str]:
+    """Parse key=value pairs from a storage connection string."""
+    return dict(item.split("=", 1) for item in conn_str.split(";") if "=" in item)
+
+
 def get_ffmpeg_accessible_url(blob_url: str, expiry_hours: int = 1) -> str:
     """Return a URL that FFmpeg can access.
 
@@ -49,14 +54,20 @@ def get_ffmpeg_accessible_url(blob_url: str, expiry_hours: int = 1) -> str:
     if "azurite" in blob_url:
         return blob_url
     container, blob_name = _parse_container_blob(blob_url)
-    client = SyncBlobServiceClient.from_connection_string(
-        settings.azure_storage_connection_string
-    )
-    blob_client = client.get_blob_client(container=container, blob=blob_name)
-    return blob_client.generate_sas_url(
+    parts = _parse_connection_string(settings.azure_storage_connection_string)
+    account_name = parts["AccountName"]
+    account_key = parts["AccountKey"]
+    sas_token = generate_blob_sas(
+        account_name=account_name,
+        container_name=container,
+        blob_name=blob_name,
+        account_key=account_key,
         permission=BlobSasPermissions(read=True),
         expiry=datetime.now(timezone.utc) + timedelta(hours=expiry_hours),
     )
+    parsed = urlparse(blob_url)
+    base_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+    return f"{base_url}?{sas_token}"
 
 
 def make_blob_path(
