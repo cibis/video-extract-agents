@@ -1,4 +1,4 @@
-"""Dynamic tool catalogue — fetches tool metadata from all MCP servers at startup."""
+"""Dynamic tool catalogue — fetches tool metadata from all MCP servers on every job."""
 from __future__ import annotations
 
 import logging
@@ -15,20 +15,17 @@ _MCP_SERVERS = [
     ("processing", settings.mcp_processing_url),
 ]
 
-_catalogue_cache: list[dict[str, Any]] | None = None
 
-
-async def fetch_tool_catalogue(force_refresh: bool = False) -> list[dict[str, Any]]:
+async def fetch_tool_catalogue() -> list[dict[str, Any]]:
     """Fetch the merged tool catalogue from all MCP servers.
+
+    Always fetches fresh on every call — no caching — so that tool changes
+    (server restarts, new tools) are picked up immediately for each job.
 
     Returns a flat list of tool descriptors, each containing:
       name, description, capability_tags, specialization,
       input_schema, output_schema, server
     """
-    global _catalogue_cache
-    if _catalogue_cache is not None and not force_refresh:
-        return _catalogue_cache
-
     all_tools: list[dict[str, Any]] = []
 
     async with httpx.AsyncClient(timeout=10) as client:
@@ -45,8 +42,23 @@ async def fetch_tool_catalogue(force_refresh: bool = False) -> list[dict[str, An
             except Exception as exc:
                 logger.warning("Could not fetch tools from %s (%s): %s", server_name, base_url, exc)
 
-    _catalogue_cache = all_tools
     return all_tools
+
+
+async def reset_analysis_rate_limiter() -> None:
+    """Clear accumulated RPM-limiter timestamps on mcp-server-analysis.
+
+    Called at the start of every job so that frontier-model rate limiting
+    state from a previous job does not bleed into the new one.
+    Best-effort: logs a warning and returns normally if the server is unavailable.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            resp = await client.post(f"{settings.mcp_analysis_url}/admin/reset-rate-limiter")
+            resp.raise_for_status()
+            logger.info("reset_analysis_rate_limiter: limiter cleared on mcp-server-analysis")
+    except Exception as exc:
+        logger.warning("reset_analysis_rate_limiter: could not reset limiter (non-fatal): %s", exc)
 
 
 EXTERNAL_AGENT_ONLY_TOOLS: frozenset[str] = frozenset({"ingest_video"})

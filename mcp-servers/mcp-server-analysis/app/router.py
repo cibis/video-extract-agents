@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from app.tool_registry import TOOLS, get_tool_catalogue
 from app.validation import validate_tool_payload
+from app.tools.model_registry import reset_rpm_limiter
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -16,6 +17,17 @@ router = APIRouter()
 @router.get("/tools")
 async def list_tools():
     return get_tool_catalogue()
+
+
+@router.post("/admin/reset-rate-limiter")
+async def admin_reset_rate_limiter():
+    """Clear accumulated frontier-model RPM-limiter timestamps.
+
+    Called by the agent-orchestrator at the start of each job so that rate-limiting
+    state from a previous job does not carry over.
+    """
+    reset_rpm_limiter()
+    return {"status": "ok"}
 
 
 @router.post("/tools/{tool_name}/invoke")

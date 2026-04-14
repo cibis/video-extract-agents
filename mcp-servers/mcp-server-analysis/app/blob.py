@@ -19,17 +19,22 @@ def _is_blob_url(url: str) -> bool:
 def _parse_container_blob(url: str) -> tuple[str, str]:
     """Parse container and blob name from an Azure Blob Storage URL.
 
-    Handles both Azure format (/<container>/<blob>) and Azurite format
-    (/<account>/<container>/<blob>).
+    Azure format:   https://<account>.blob.core.windows.net/<container>/<blob>
+    Azurite format: http://azurite:10000/<account>/<container>/<blob>
+                    http://127.0.0.1:10000/<account>/<container>/<blob>
+
+    Azurite includes the account name as the first path segment; Azure does not.
+    We detect Azurite by hostname so we can strip the account segment correctly.
     """
     parsed = urlparse(url)
-    parts = parsed.path.lstrip("/").split("/", 2)
-    if len(parts) == 3:
-        # Azurite: /<account>/<container>/<blob>
-        return parts[1], parts[2]
-    elif len(parts) == 2:
-        return parts[0], parts[1]
-    raise ValueError(f"Cannot parse container/blob from URL: {url}")
+    path = parsed.path.lstrip("/")
+    # Azurite exposes a virtual-path endpoint: first segment is the account name
+    is_azurite = "127.0.0.1" in parsed.netloc or "azurite" in parsed.netloc
+    if is_azurite:
+        # Drop the account segment, remainder is <container>/<blob>
+        _, path = path.split("/", 1)
+    container, blob_name = path.split("/", 1)
+    return container, blob_name
 
 
 async def read_blob_bytes(url: str) -> bytes:

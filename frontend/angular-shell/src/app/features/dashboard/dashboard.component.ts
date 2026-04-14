@@ -14,6 +14,15 @@ interface JobFiles {
   inputs: SessionAsset[];
 }
 
+interface SessionGroup {
+  sessionId: string | null;
+  label: string;
+  date: string;
+  jobs: Job[];
+  isTest: boolean;
+  isFromFile?: boolean;
+}
+
 interface TextDialog {
   label: string;
   text: string;
@@ -115,6 +124,13 @@ const LOG_PALETTE = [
             <button class="btn--danger" [disabled]="wipeInProgress()" (click)="confirmWipeTestData()">Wipe test data</button>
             <button class="btn--danger btn--danger-all" [disabled]="wipeInProgress()" (click)="confirmWipeAllData()">Wipe all data</button>
           </div>
+          <div class="file-load-actions">
+            <input #fileInput type="file" multiple accept=".log" style="display:none" (change)="onFilesSelected($event)">
+            <button class="btn--file" (click)="fileInput.click()">Load log files</button>
+            @if (fileSessionGroups().length > 0) {
+              <button class="btn--clear-files" (click)="clearFileGroups()">Clear ({{ fileSessionGroups().length }})</button>
+            }
+          </div>
         </div>
         @if (wipeResult()) {
           <p class="wipe-result">{{ wipeResult() }}</p>
@@ -129,7 +145,10 @@ const LOG_PALETTE = [
       @for (group of filteredSessionGroups(); track group.sessionId) {
         <div class="session-group">
           <div class="session-group__header">
-            <span class="session-group__label">Session …{{ group.label }}</span>
+            <span class="session-group__label">{{ group.isFromFile ? group.label : 'Session …' + group.label }}</span>
+            @if (group.isFromFile) {
+              <span class="session-group__file-badge">from file</span>
+            }
             <span class="session-group__date">{{ group.date | date:'mediumDate' }}</span>
           </div>
 
@@ -598,6 +617,39 @@ const LOG_PALETTE = [
     .tool-progress__bar-fill--indeterminate { width: 40% !important; animation: progress-indeterminate 1.2s ease-in-out infinite; }
     @keyframes progress-indeterminate { 0% { transform: translateX(-100%); } 100% { transform: translateX(350%); } }
     .tool-progress__label { font-size: 0.62rem; font-family: monospace; color: #1d4ed8; white-space: nowrap; }
+
+    /* ── File load controls ── */
+    .file-load-actions { display: flex; align-items: center; gap: 0.35rem; }
+    .btn--file {
+      font-size: 0.78rem;
+      padding: 0.2rem 0.75rem;
+      border: 1px solid #0050a0;
+      border-radius: 4px;
+      background: transparent;
+      color: #0050a0;
+      cursor: pointer;
+    }
+    .btn--file:hover { background: #deedf8; }
+    .btn--clear-files {
+      font-size: 0.78rem;
+      padding: 0.2rem 0.6rem;
+      border: 1px solid #888;
+      border-radius: 4px;
+      background: transparent;
+      color: #555;
+      cursor: pointer;
+    }
+    .btn--clear-files:hover { background: #efefef; color: #333; }
+    .session-group__file-badge {
+      font-size: 0.65rem;
+      padding: 0.1rem 0.45rem;
+      background: #f0e8ff;
+      color: #5a1a9a;
+      border-radius: 10px;
+      font-family: monospace;
+      border: 1px solid #d0c0f0;
+      flex-shrink: 0;
+    }
   `],
 })
 export class DashboardComponent implements OnInit, OnDestroy {
@@ -623,6 +675,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   /** Maps jobId → (call_group_id → ToolProgressData) for active tool calls. */
   toolProgressMap = signal<Map<string, Map<string, ToolProgressData>>>(new Map());
+
+  /** Session groups loaded from local log files — ephemeral, cleared on page refresh. */
+  fileSessionGroups = signal<SessionGroup[]>([]);
+
+  /** Job IDs that came from local files — skip API fetch for these. */
+  private readonly _fileJobIds = new Set<string>();
 
   /** Active SSE subscriptions for live-log streaming, keyed by jobId. */
   private readonly _liveLogStreams = new Map<string, Subscription>();
@@ -670,8 +728,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return slash >= 0 ? model.slice(slash + 1) : model;
   }
 
-  sessionGroups = computed(() => {
-    const seen = new Map<string, { sessionId: string | null; label: string; date: string; jobs: Job[]; isTest: boolean }>();
+  sessionGroups = computed((): SessionGroup[] => {
+    const seen = new Map<string, SessionGroup>();
     const order: string[] = [];
     for (const job of this.jobs()) {
       if (!job.prompt) continue;
@@ -691,13 +749,15 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return order.map(k => seen.get(k)!);
   });
 
-  filteredSessionGroups = computed(() => {
+  filteredSessionGroups = computed((): SessionGroup[] => {
     const filter = this.historyFilter();
-    return this.sessionGroups().filter(group => {
+    const regular = this.sessionGroups().filter(group => {
       if (filter === 'real') return !group.isTest;
       if (filter === 'test') return group.isTest;
       return true;
     });
+    // File-loaded groups always shown at top regardless of filter
+    return [...this.fileSessionGroups(), ...regular];
   });
 
   ngOnInit(): void {
@@ -753,6 +813,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
       return;
     }
     this.expandedJob.set(jobId);
+
+    // File-loaded jobs have logs pre-populated — no API call needed
+    if (this._fileJobIds.has(jobId)) return;
 
     const job = this.jobs().find(j => j.id === jobId);
     const isRunning = job?.status === 'queued' || job?.status === 'processing';
@@ -959,6 +1022,205 @@ export class DashboardComponent implements OnInit, OnDestroy {
         this.fetchJobLogs(job.id);
       }
     }
+  }
+
+  /** Handle <input type="file"> change event — read each file and parse. */
+  onFilesSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const files = Array.from(input.files ?? []);
+    for (const file of files) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const content = e.target?.result as string;
+        if (content) this._parseLogFile(file.name, content);
+      };
+      reader.readAsText(file);
+    }
+    // Reset so the same file can be re-selected after clearing
+    input.value = '';
+  }
+
+  /** Remove all file-loaded session groups and their log entries. */
+  clearFileGroups(): void {
+    const groups = this.fileSessionGroups();
+    // Remove job logs for file jobs
+    const map = new Map(this.jobLogs());
+    for (const group of groups) {
+      for (const job of group.jobs) {
+        this._fileJobIds.delete(job.id);
+        map.delete(job.id);
+      }
+    }
+    this.jobLogs.set(map);
+    this.fileSessionGroups.set([]);
+    // If expanded job was from a file, collapse it
+    const expanded = this.expandedJob();
+    if (expanded && !this.jobs().some(j => j.id === expanded)) {
+      this.expandedJob.set(null);
+    }
+  }
+
+  /** Parse a CI log file into a SessionGroup + pre-populated logs map. */
+  private _parseLogFile(filename: string, content: string): void {
+    const lines = content.split('\n');
+
+    // Derive test name from the header line "=== <path> ==="
+    let testName = filename.replace(/\.log$/, '');
+    const headerMatch = lines[0]?.match(/^===\s+(.+?)\s+===$/);
+    if (headerMatch) testName = headerMatch[1];
+
+    // Derive a stable synthetic session ID from the filename
+    const sessionId = 'file-' + filename.replace(/[^a-zA-Z0-9]/g, '').slice(0, 24);
+
+    const jobs: Job[] = [];
+    const logsMap = new Map<string, JobLog[]>();
+
+    let currentJobId: string | null = null;
+    let currentLogs: JobLog[] = [];
+    let seqNum = 0;
+    let firstTimestamp: string | null = null;
+    let lastTimestamp: string | null = null;
+    let groupIndex = 0;
+
+    type EntryBuf = {
+      ts: string; log_type: string;
+      tool: string | null; agent: string | null;
+      msgLines: string[]; errLines: string[];
+    };
+    let currentEntry: EntryBuf | null = null;
+
+    const flushEntry = () => {
+      if (!currentEntry || !currentJobId) return;
+      const message = currentEntry.msgLines.join('\n').trim() || null;
+      const error_text = currentEntry.errLines.join('\n').trim() || null;
+      const message_type = error_text ? 'Error' : 'Input';
+      currentLogs.push({
+        id: `file-${currentJobId}-${seqNum}`,
+        job_id: currentJobId,
+        session_id: sessionId,
+        service_name: currentEntry.tool ? 'mcp-server-analysis' : 'agent-orchestrator',
+        log_type: currentEntry.log_type,
+        model_id: null,
+        tool_name: currentEntry.tool,
+        agent_role: currentEntry.agent,
+        task_name: null,
+        message,
+        message_type,
+        call_group_id: `file-grp-${currentJobId}-${groupIndex}`,
+        sequence_num: seqNum++,
+        error_text,
+        created_at: currentEntry.ts,
+      } as JobLog);
+    };
+
+    const saveJob = () => {
+      if (!currentJobId) return;
+      flushEntry();
+      currentEntry = null;
+      logsMap.set(currentJobId, [...currentLogs]);
+      const hasError = currentLogs.some(l => l.message_type === 'Error');
+      jobs.push({
+        id: currentJobId,
+        user_id: 'file',
+        session_id: sessionId,
+        video_id: '',
+        prompt: testName,
+        status: hasError ? 'failed' : 'completed',
+        output_url: null,
+        error: null,
+        is_test: true,
+        created_at: firstTimestamp ?? new Date().toISOString(),
+        updated_at: lastTimestamp ?? new Date().toISOString(),
+      } as Job);
+    };
+
+    for (const line of lines) {
+      // Job section header: --- Job <uuid> ---
+      const jobMatch = line.match(/^---\s+Job\s+([0-9a-f-]{36})\s+---$/);
+      if (jobMatch) {
+        saveJob();
+        currentJobId = jobMatch[1];
+        currentLogs = [];
+        seqNum = 0;
+        groupIndex = 0;
+        firstTimestamp = null;
+        lastTimestamp = null;
+        currentEntry = null;
+        continue;
+      }
+
+      // Log entry header: [timestamp] [log_type] (optional tool=xxx agent=xxx)
+      const entryMatch = line.match(/^\[([^\]]+)\]\s+\[([^\]]+)\](.*)/);
+      if (entryMatch && currentJobId) {
+        flushEntry();
+        groupIndex++;
+        const ts = entryMatch[1];
+        const log_type = entryMatch[2];
+        const rest = entryMatch[3];
+        if (!firstTimestamp) firstTimestamp = ts;
+        lastTimestamp = ts;
+        const toolMatch = rest.match(/tool=(\S+)/);
+        const agentMatch = rest.match(/agent=(\S+)/);
+        currentEntry = {
+          ts,
+          log_type,
+          tool: toolMatch ? toolMatch[1] : null,
+          agent: agentMatch ? agentMatch[1] : null,
+          msgLines: [],
+          errLines: [],
+        };
+        continue;
+      }
+
+      // Content line (2-space indent)
+      if (currentEntry && line.startsWith('  ')) {
+        const body = line.slice(2);
+        if (body.startsWith('ERROR: ')) {
+          currentEntry.errLines.push(body.slice(7));
+        } else {
+          currentEntry.msgLines.push(body);
+        }
+      }
+    }
+
+    // Flush final job
+    saveJob();
+
+    if (jobs.length === 0) return;
+
+    // Register logs and job IDs
+    for (const [jobId, logs] of logsMap) {
+      this._fileJobIds.add(jobId);
+    }
+    const logsSignal = new Map(this.jobLogs());
+    for (const [jobId, logs] of logsMap) {
+      logsSignal.set(jobId, logs);
+    }
+    this.jobLogs.set(logsSignal);
+
+    // Build session group label from test name (last :: segment)
+    const labelParts = testName.split('::');
+    const label = labelParts[labelParts.length - 1] ?? testName;
+
+    const group: SessionGroup = {
+      sessionId,
+      label,
+      date: jobs[0].created_at,
+      jobs,
+      isTest: true,
+      isFromFile: true,
+    };
+
+    // Upsert group (replace if same session ID already loaded)
+    this.fileSessionGroups.update(groups => {
+      const idx = groups.findIndex(g => g.sessionId === sessionId);
+      if (idx >= 0) {
+        const updated = [...groups];
+        updated[idx] = group;
+        return updated;
+      }
+      return [...groups, group];
+    });
   }
 
   private loadJobFiles(jobs: Job[]): void {

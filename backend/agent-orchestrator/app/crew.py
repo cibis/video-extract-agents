@@ -22,7 +22,7 @@ from app.db import (
     get_app_setting,
 )
 from app.generated_asset_store import write_generated_asset
-from app.tools.catalogue import fetch_tool_catalogue, filter_catalogue_for_frontend, format_catalogue_for_planner
+from app.tools.catalogue import fetch_tool_catalogue, filter_catalogue_for_frontend, format_catalogue_for_planner, reset_analysis_rate_limiter
 from app.tools.crewai_tools import build_crewai_tools, set_mcp_job_log_queue
 from app.litellm_callbacks import set_job_context, clear_job_context, set_loop, clear_loop, drain_pending_logs, wrap_litellm_completion, guard_tool_usage_errors, _thread_local
 from app.log_sequence import new_counter
@@ -274,7 +274,9 @@ async def run_crew(
         video_urls = []
     primary_video_url = video_urls[0] if video_urls else ""
 
-    # Fetch all context concurrently (including agent_model from app_settings)
+    # Fetch all context concurrently (including agent_model from app_settings).
+    # reset_analysis_rate_limiter() runs alongside the other init tasks so frontier-model
+    # rate-limiting state from the previous job is cleared before this job's crew starts.
     gather_tasks = [
         get_keyframe_indices_for_videos(video_urls),
         _get_video_duration(primary_video_url) if primary_video_url else asyncio.sleep(0),
@@ -287,6 +289,7 @@ async def run_crew(
         get_app_setting("planner_agent_model"),
         get_app_setting("planner_agent_rpm_limit"),
         get_app_setting("tool_max_retry_limit"),
+        reset_analysis_rate_limiter(),
     ]
     results = await asyncio.gather(*gather_tasks, return_exceptions=True)
 

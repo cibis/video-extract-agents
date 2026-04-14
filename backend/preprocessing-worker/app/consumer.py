@@ -131,6 +131,10 @@ async def run_consumer() -> None:
                                 await receiver.abandon_message(msg)
                             finally:
                                 renewer.cancel()
+                                try:
+                                    await renewer
+                                except asyncio.CancelledError:
+                                    pass
                         await asyncio.sleep(1)
         except asyncio.CancelledError:
             logger.info("Consumer task cancelled; shutting down")

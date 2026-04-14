@@ -77,6 +77,19 @@ def _get_or_update_limiter(rpm_limit: int | None) -> _AsyncRpmLimiter | None:
     return _rpm_limiter
 
 
+def reset_rpm_limiter() -> None:
+    """Clear accumulated rate-limiter timestamps.
+
+    Called at job boundaries (via POST /admin/reset-rate-limiter) so that
+    frontier-model rate-limiting state from a previous job does not bleed
+    into the next one.  Thread-safe: the deque itself is only mutated inside
+    the asyncio event loop, and this function is only called from async handlers.
+    """
+    if _rpm_limiter is not None:
+        _rpm_limiter._timestamps.clear()
+        logger.info("reset_rpm_limiter: rate-limiter timestamps cleared")
+
+
 class FrontierModelClient:
     """Thin async wrapper around LiteLLM for vision-capable frontier models."""
 
