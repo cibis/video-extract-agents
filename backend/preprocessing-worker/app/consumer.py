@@ -93,6 +93,19 @@ _BACKOFF_BASE = 2
 _BACKOFF_MAX = 60
 
 
+async def _renew_lock(receiver, msg, interval: int = 45) -> None:
+    """Periodically renew the Service Bus message lock to prevent expiry during long processing."""
+    while True:
+        await asyncio.sleep(interval)
+        try:
+            await receiver.renew_message_lock(msg)
+        except asyncio.CancelledError:
+            break
+        except Exception as exc:
+            logger.warning("Failed to renew SB message lock (non-fatal): %s", exc)
+            break
+
+
 async def run_consumer() -> None:
     logger.info("Starting Service Bus consumer for queue: video-uploaded")
     attempt = 0
@@ -108,6 +121,7 @@ async def run_consumer() -> None:
                     while True:
                         messages = await receiver.receive_messages(max_message_count=1, max_wait_time=5)
                         for msg in messages:
+                            renewer = asyncio.create_task(_renew_lock(receiver, msg))
                             try:
                                 body = json.loads(str(msg))
                                 await process_video_message(body)
@@ -115,6 +129,8 @@ async def run_consumer() -> None:
                             except Exception as exc:
                                 logger.error("Message processing failed: %s", exc)
                                 await receiver.abandon_message(msg)
+                            finally:
+                                renewer.cancel()
                         await asyncio.sleep(1)
         except asyncio.CancelledError:
             logger.info("Consumer task cancelled; shutting down")

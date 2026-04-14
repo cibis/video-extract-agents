@@ -5,7 +5,9 @@ import uuid
 from typing import Any, Callable
 
 import httpx
+from azure.core.exceptions import ResourceNotFoundError
 
+from app.blob import read_blob_bytes
 from app.tools.generated_asset_store import read_generated_asset, write_generated_asset
 from app.tools.segment_utils import aggregate_detections_to_segments
 
@@ -155,14 +157,28 @@ async def _detect_in_frame(
             "detect_objects requires opencv-python and numpy which are not installed in this container"
         )
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.get(frame_url)
-        resp.raise_for_status()
-        img_data = np.frombuffer(resp.content, dtype=np.uint8)
-        img = cv2.imdecode(img_data, cv2.IMREAD_COLOR)
-        if img is None:
-            logger.warning("Could not decode image from %s; skipping frame", frame_url)
+    try:
+        frame_bytes = await read_blob_bytes(frame_url)
+    except ResourceNotFoundError:
+        logger.warning(
+            "detect_objects: keyframe blob does not exist: %s — "
+            "skipping frame (preprocessing may have failed)",
+            frame_url,
+        )
+        return []
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 404:
+            logger.warning(
+                "detect_objects: keyframe 404: %s — skipping frame", frame_url
+            )
             return []
+        raise
+
+    img_data = np.frombuffer(frame_bytes, dtype=np.uint8)
+    img = cv2.imdecode(img_data, cv2.IMREAD_COLOR)
+    if img is None:
+        logger.warning("Could not decode image from %s; skipping frame", frame_url)
+        return []
 
     model = _get_model()
 

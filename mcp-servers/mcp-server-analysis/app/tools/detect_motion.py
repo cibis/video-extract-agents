@@ -4,8 +4,6 @@ import logging
 import uuid
 from typing import Any, Callable
 
-import httpx
-
 from app.tools.generated_asset_store import read_generated_asset, write_generated_asset
 
 logger = logging.getLogger(__name__)
@@ -91,12 +89,14 @@ async def detect_motion(
 
 
 async def _download_frame(url: str) -> bytes | None:
-    """Download a single frame image; returns None on failure."""
+    """Download a single frame image; returns None on failure.
+
+    Uses the Azure Storage SDK for blob URLs (authenticated) so that frames
+    in accounts with anonymous access disabled are still readable.
+    """
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.get(url)
-            resp.raise_for_status()
-            return resp.content
+        from app.blob import read_blob_bytes
+        return await read_blob_bytes(url)
     except Exception as exc:
         logger.warning("detect_motion: could not download frame %s: %s", url, exc)
         return None

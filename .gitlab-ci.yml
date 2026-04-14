@@ -284,6 +284,8 @@ collect_e2e_logs:
   needs:
     - job: e2e_tests
       artifacts: true
+    - job: aca_test_env_create
+      artifacts: true
   script:
     - RG="video-extract-test-${CI_PIPELINE_ID}"
     - SERVICES=(api-gateway agent-orchestrator preprocessing-worker notification-worker
