@@ -348,8 +348,8 @@ resource "azurerm_container_app" "mcp_server_analysis" {
     container {
       name   = "mcp-server-analysis"
       image  = "${var.acr_login_server}/mcp-server-analysis:${var.image_tag}"
-      cpu    = 1.5
-      memory = "3Gi"
+      cpu    = 2
+      memory = "4Gi"
 
       env {
         name  = "AZURE_STORAGE_CONNECTION_STRING"
