@@ -195,11 +195,14 @@ def make_plan_task(
             "  - segments: list of {start_seconds, end_seconds, reason, video_url}\n"
             "  - selected_tools: list of {tool_name, rationale, "
             "keyframe_index_asset (from above)}\n"
-            "  - operations: list of processing steps\n"
-            "  - final_output_name: output filename"
+            "  - final_output_name: output filename\n"
+            "Do NOT include an 'operations' field or any step-by-step pseudocode with "
+            "example input/output values. The analysis agent executes tools directly and "
+            "does not need pseudocode."
         ),
         expected_output=(
-            "A JSON object with: videos, segments, selected_tools, operations, final_output_name."
+            "A JSON object with: videos, segments, selected_tools, final_output_name. "
+            "No 'operations' field."
         ),
         agent=agent,
     )
@@ -232,6 +235,14 @@ def make_analysis_task(
 
     return Task(
         description=(
+            "TOOL EXECUTION REQUIRED — DO NOT FABRICATE RESULTS:\n"
+            "The plan context above is a ROADMAP. Any values that look like asset names "
+            "(e.g. 'frames_asset_abc123', 'result_asset_xyz') are planning placeholders "
+            "invented by the planner — they are NOT real blob URLs. "
+            "You MUST call each tool to produce actual result_asset URLs. "
+            "Never copy a placeholder value into a tool argument or Final Answer. "
+            "Do NOT produce a Final Answer before calling at least extract_frames and "
+            "the primary analysis tool listed in selected_tools.\n\n"
             f"{context_block}\n"
             f"Analyse the following videos using the tools selected in the extraction plan:\n"
             f"{video_list}\n\n"
