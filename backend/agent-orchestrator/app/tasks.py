@@ -94,8 +94,10 @@ def make_plan_task(
     keyframe_section = ""
     if keyframe_index_assets:
         lines = [
-            "\nKeyframe index assets — pass these blob paths directly to analysis tools as "
-            "'keyframe_index_asset'. Do NOT fetch or expand their contents:"
+            "\nKeyframe index assets — pass these blob paths to extract_frames as "
+            "'keyframe_index_asset'. Do NOT pass them to detect_* or other analysis tools "
+            "— those tools require frames_asset (from extract_frames). "
+            "Do NOT fetch or expand their contents:"
         ]
         for video_url, blob_path in keyframe_index_assets.items():
             lines.append(f"  - video: {video_url}  →  keyframe_index_asset: {blob_path}")
@@ -182,7 +184,9 @@ def make_plan_task(
             "with a targeted JSONPath to retrieve only the values needed.\n\n"
             "For each step in the plan, select the most appropriate tool from the catalogue above. "
             "When specifying tools in selected_tools, always include the keyframe_index_asset path "
-            "for the relevant video so the analysis agent can pass it to extract_frames and detect_* tools. "
+            "for the relevant video so the analysis agent can pass it to extract_frames. "
+            "extract_frames MUST be the first tool called for each video — its result_asset is "
+            "then passed as frames_asset to all other analysis tools. "
             "When calling any processing tool (extract_clip, extract_clips_bulk, merge_clips, "
             "split_video, transform_video, write_asset), always include both job_id and session_id "
             "in the tool inputs so that all generated artifacts are stored under the correct path.\n"
@@ -217,8 +221,10 @@ def make_analysis_task(
     )
     if keyframe_index_assets:
         kf_lines = [
-            "Keyframe index assets (pass as 'keyframe_index_asset' to extract_frames "
-            "and detect_* tools — do NOT expand their contents):"
+            "Keyframe index assets — pass as 'keyframe_index_asset' to extract_frames ONLY. "
+            "Do NOT pass keyframe_index_asset to detect_* or other analysis tools. "
+            "Those tools require frames_asset (the result_asset blob returned by extract_frames). "
+            "Do NOT expand their contents:"
         ]
         for video_url, blob_path in keyframe_index_assets.items():
             kf_lines.append(f"  - {video_url}  →  {blob_path}")
@@ -255,9 +261,11 @@ def make_analysis_task(
             "instead of reading the full blob.\n\n"
             "For each tool specified in selected_tools, invoke it with the required inputs. "
             "Always pass job_id and session_id to every tool call. "
-            "Pass keyframe_index_asset to extract_frames and detect_* tools. "
-            "For estimate_height_above_surface, pass frames_asset=<result_asset from extract_frames> "
-            "— it does not accept keyframe_index_asset.\n\n"
+            "MANDATORY FIRST STEP: For each video, call extract_frames with keyframe_index_asset "
+            "before calling any other analysis tool. extract_frames returns result_asset — pass "
+            "this as frames_asset to detect_motion, detect_motion_sports, detect_objects, "
+            "analyze_scene, and estimate_height_above_surface. "
+            "keyframe_index_asset must NOT be passed to any tool other than extract_frames.\n\n"
             "Frontier vision tools (analyze_scene, detect_objects_vision) use the configured "
             "model automatically — do not pass a model parameter.\n\n"
             "Each detection and motion tool returns a 'summary.segments' list of already-merged "
