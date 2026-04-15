@@ -36,8 +36,8 @@ resource "azurerm_container_app" "postgresql" {
     container {
       name   = "postgresql"
       image  = "postgres:15-alpine"
-      cpu    = 0.5
-      memory = "1Gi"
+      cpu    = 0.75
+      memory = "1.5Gi"
 
       env {
         name  = "POSTGRES_USER"
@@ -151,8 +151,8 @@ resource "azurerm_container_app" "api_gateway" {
     container {
       name   = "api-gateway"
       image  = "${var.acr_login_server}/api-gateway:${var.image_tag}"
-      cpu    = 0.5
-      memory = "1Gi"
+      cpu    = 0.75
+      memory = "1.5Gi"
 
       env {
         name  = "DATABASE_URL"
@@ -245,8 +245,8 @@ resource "azurerm_container_app" "agent_orchestrator" {
     container {
       name   = "agent-orchestrator"
       image  = "${var.acr_login_server}/agent-orchestrator:${var.image_tag}"
-      cpu    = 1.0
-      memory = "2Gi"
+      cpu    = 1.5
+      memory = "3Gi"
 
       env {
         name  = "DATABASE_URL"
@@ -348,8 +348,8 @@ resource "azurerm_container_app" "mcp_server_analysis" {
     container {
       name   = "mcp-server-analysis"
       image  = "${var.acr_login_server}/mcp-server-analysis:${var.image_tag}"
-      cpu    = 0.5
-      memory = "1Gi"
+      cpu    = 1.5
+      memory = "3Gi"
 
       env {
         name  = "AZURE_STORAGE_CONNECTION_STRING"
@@ -436,8 +436,8 @@ resource "azurerm_container_app" "mcp_server_processing" {
     container {
       name   = "mcp-server-processing"
       image  = "${var.acr_login_server}/mcp-server-processing:${var.image_tag}"
-      cpu    = 1.0
-      memory = "2Gi"
+      cpu    = 1.5
+      memory = "3Gi"
 
       env {
         name  = "AZURE_STORAGE_CONNECTION_STRING"
@@ -497,8 +497,8 @@ resource "azurerm_container_app" "preprocessing_worker" {
     container {
       name   = "preprocessing-worker"
       image  = "${var.acr_login_server}/preprocessing-worker:${var.image_tag}"
-      cpu    = 1.0
-      memory = "2Gi"
+      cpu    = 1.5
+      memory = "3Gi"
 
       env {
         name  = "DATABASE_URL"
@@ -559,8 +559,8 @@ resource "azurerm_container_app" "notification_worker" {
     container {
       name   = "notification-worker"
       image  = "${var.acr_login_server}/notification-worker:${var.image_tag}"
-      cpu    = 0.25
-      memory = "0.5Gi"
+      cpu    = 0.5
+      memory = "1Gi"
 
       env {
         name  = "DATABASE_URL"
@@ -629,8 +629,8 @@ resource "azurerm_container_app" "angular_shell" {
     container {
       name   = "angular-shell"
       image  = "${var.acr_login_server}/angular-shell:${var.image_tag}"
-      cpu    = 0.25
-      memory = "0.5Gi"
+      cpu    = 0.5
+      memory = "1Gi"
 
       env {
         name  = "API_GATEWAY_URL"
@@ -685,8 +685,8 @@ resource "azurerm_container_app" "librechat" {
     container {
       name   = "librechat"
       image  = "${var.acr_login_server}/librechat:${var.image_tag}"
-      cpu    = 0.5
-      memory = "1Gi"
+      cpu    = 0.75
+      memory = "1.5Gi"
 
       env {
         name  = "API_GATEWAY_URL"
