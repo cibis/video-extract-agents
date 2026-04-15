@@ -63,10 +63,6 @@ def test_followup_multi_video_session(request, tmp_path, api_gateway_url, http_c
     video1_id, _ = upload_video(http_client, api_gateway_url, auth_headers, session_id, video1_path)
     wait_for_indexed(http_client, api_gateway_url, auth_headers, session_id)
 
-    video2_id, _ = upload_video(http_client, api_gateway_url, auth_headers, session_id, video2_path)
-    # Wait for both videos to be indexed — poll until asset count stabilises
-    wait_for_indexed(http_client, api_gateway_url, auth_headers, session_id)
-
     # Job 1 — extract motion from video 1
     j1 = submit_job(
         http_client, api_gateway_url, auth_headers,
@@ -79,6 +75,11 @@ def test_followup_multi_video_session(request, tmp_path, api_gateway_url, http_c
     assert_job_succeeded(job1)
 
     # Job 2 — process video 2, merge with previous job output
+
+    video2_id, _ = upload_video(http_client, api_gateway_url, auth_headers, session_id, video2_path)
+    # Wait for both videos to be indexed — poll until asset count stabilises
+    wait_for_indexed(http_client, api_gateway_url, auth_headers, session_id)
+        
     j2 = submit_job(
         http_client, api_gateway_url, auth_headers,
         video_id=video2_id, session_id=session_id,
