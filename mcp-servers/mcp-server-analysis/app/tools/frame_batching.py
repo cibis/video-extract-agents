@@ -16,9 +16,9 @@ import traceback as _traceback
 from typing import Awaitable, Callable
 
 import cv2
-import httpx
 import numpy as np
 
+from app.blob import read_blob_bytes
 from app.db import get_model_context_window
 
 logger = logging.getLogger(__name__)
@@ -131,10 +131,7 @@ async def _detect_aspect_ratio(image_urls: list[str]) -> float:
         if not url:
             continue
         try:
-            async with httpx.AsyncClient(timeout=30) as client:
-                resp = await client.get(url)
-                resp.raise_for_status()
-                data = resp.content
+            data = await read_blob_bytes(url)
             arr = np.frombuffer(data, dtype=np.uint8)
             img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
             if img is not None and img.shape[0] > 0:
@@ -160,11 +157,7 @@ async def _fetch_resize_to_data_uri(
     error_detail is None on success; data_uri is None on failure.
     """
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.get(url)
-            resp.raise_for_status()
-            data = resp.content
-
+        data = await read_blob_bytes(url)
         arr = np.frombuffer(data, dtype=np.uint8)
         img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
         if img is None:

@@ -7,9 +7,9 @@ import math
 import uuid
 from typing import Any, Callable
 
-import httpx
 import numpy as np
 
+from app.blob import read_blob_bytes
 from app.tools.generated_asset_store import read_generated_asset, write_generated_asset
 
 logger = logging.getLogger(__name__)
@@ -125,10 +125,7 @@ def _tilt_corrected_height(
 
 async def _download_frame(url: str) -> bytes | None:
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.get(url)
-            resp.raise_for_status()
-            return resp.content
+        return await read_blob_bytes(url)
     except Exception as exc:
         logger.warning("estimate_height_above_surface: could not download frame %s: %s", url, exc)
         return None

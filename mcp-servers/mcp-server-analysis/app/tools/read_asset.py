@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 import logging
+import mimetypes
 
-import httpx
+from app.blob import read_blob_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -19,19 +20,14 @@ async def read_asset(payload: dict) -> dict:
     blob_url: str = payload["blob_url"]
     max_bytes: int = payload.get("max_bytes") or _DEFAULT_MAX_BYTES
 
-    async with httpx.AsyncClient(timeout=30) as client:
-        async with client.stream("GET", blob_url) as resp:
-            resp.raise_for_status()
-            content_type = resp.headers.get("content-type", "application/octet-stream")
-            chunks: list[bytes] = []
-            total = 0
-            async for chunk in resp.aiter_bytes(chunk_size=8192):
-                chunks.append(chunk)
-                total += len(chunk)
-                if total >= max_bytes:
-                    logger.warning("Asset truncated at %d bytes: %s", max_bytes, blob_url)
-                    break
-            raw = b"".join(chunks)
+    raw_full = await read_blob_bytes(blob_url)
+    raw = raw_full[:max_bytes]
+    if len(raw_full) > max_bytes:
+        logger.warning("Asset truncated at %d bytes: %s", max_bytes, blob_url)
+    total = len(raw)
+    # Derive content type from the URL extension; fall back to octet-stream.
+    content_type, _ = mimetypes.guess_type(blob_url.split("?")[0])
+    content_type = content_type or "application/octet-stream"
 
     is_text = any(
         t in content_type
