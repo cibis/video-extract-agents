@@ -4,10 +4,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     # LLM model — LiteLLM model string, e.g.:
+    #   bedrock/us.amazon.nova-2-lite-v1:0
     #   anthropic/claude-sonnet-4-6
     #   openai/gpt-4o
-    #   bedrock/us.anthropic.claude-sonnet-4-5-20251001-v1:0
-    agent_model: str = "anthropic/claude-sonnet-4-6"
+    # Must match the value seeded in app_settings (key: agent_model) so that
+    # the fallback behaviour is identical to the DB-configured behaviour.
+    agent_model: str = "bedrock/us.amazon.nova-2-lite-v1:0"
 
     # RPM limit for agent LLM calls — requests per minute.
     # Empty or absent = no limit.  Default: 4 (= 1 call per 15 s).

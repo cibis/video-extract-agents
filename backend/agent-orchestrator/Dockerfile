@@ -1,7 +1,9 @@
 # Build stage
+# Build context must be the repository root:
+#   docker build -f backend/agent-orchestrator/Dockerfile -t ... .
 FROM python:3.11-slim AS builder
 WORKDIR /app
-COPY requirements.txt ./
+COPY backend/agent-orchestrator/requirements.txt ./
 RUN python -m venv .venv \
     && .venv/bin/pip install --no-cache-dir setuptools \
     && .venv/bin/pip install --no-cache-dir -r requirements.txt
@@ -13,7 +15,8 @@ RUN groupadd -r appgroup && useradd -r -g appgroup -m -d /home/appuser appuser \
     && mkdir -p /home/appuser/.local/share/app \
     && chown -R appuser:appgroup /home/appuser
 COPY --from=builder /app/.venv ./.venv
-COPY app/ ./app/
+COPY backend/agent-orchestrator/app/ ./app/
+COPY scripts/init_db.py ./init_db.py
 ENV PATH="/app/.venv/bin:$PATH"
 ENV HOME="/home/appuser"
 USER appuser

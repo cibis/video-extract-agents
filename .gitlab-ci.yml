@@ -124,8 +124,9 @@ build:agent-orchestrator:
       docker build \
         --build-arg BUILDKIT_INLINE_CACHE=1 \
         --cache-from "$ACR_REGISTRY/agent-orchestrator:buildcache" \
+        -f backend/agent-orchestrator/Dockerfile \
         -t "$ACR_REGISTRY/agent-orchestrator:$IMAGE_TAG" \
-        backend/agent-orchestrator/
+        .
     - docker push "$ACR_REGISTRY/agent-orchestrator:$IMAGE_TAG"
     - docker tag "$ACR_REGISTRY/agent-orchestrator:$IMAGE_TAG" "$ACR_REGISTRY/agent-orchestrator:buildcache"
     - docker push "$ACR_REGISTRY/agent-orchestrator:buildcache" || true
@@ -243,6 +244,36 @@ deploy_test_services:
           --name "$svc" \
           --resource-group "$RG" \
           --image "$ACR_REGISTRY/$svc:$IMAGE_TAG" || true
+      done
+    - |
+      # Run db-init job inside the ACA environment (postgresql:5432 is reachable there).
+      # This seeds all tables and app_settings so services don't fall back to env-var defaults.
+      RG="video-extract-test-${CI_PIPELINE_ID}"
+      echo "Starting db-init job..."
+      EXEC_NAME=$(az containerapp job start \
+        --name db-init \
+        --resource-group "$RG" \
+        --query "name" --output tsv)
+      echo "db-init execution: $EXEC_NAME — polling for completion..."
+      for i in $(seq 1 30); do
+        STATUS=$(az containerapp job execution list \
+          --name db-init \
+          --resource-group "$RG" \
+          --query "[?name=='$EXEC_NAME'].properties.status | [0]" \
+          --output tsv 2>/dev/null || echo "")
+        if [ "$STATUS" = "Succeeded" ]; then
+          echo "db-init completed successfully."
+          break
+        elif [ "$STATUS" = "Failed" ]; then
+          echo "ERROR: db-init job execution failed. Aborting."
+          az containerapp job execution list \
+            --name db-init \
+            --resource-group "$RG" \
+            --query "[?name=='$EXEC_NAME']" --output json || true
+          exit 1
+        fi
+        echo "  attempt $i/30: status=${STATUS:-pending} — waiting 10s..."
+        sleep 10
       done
 
 e2e_tests:

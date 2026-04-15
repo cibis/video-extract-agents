@@ -714,3 +714,55 @@ resource "azurerm_container_app" "librechat" {
     }
   }
 }
+
+# ─── DB Init Job ──────────────────────────────────────────────────────────────
+# One-shot Container App Job that runs init_db.py inside the ACA environment
+# (where postgresql:5432 is reachable). Triggered manually via
+# `az containerapp job start` in the deploy_test_services CI stage.
+# Only created in ephemeral test environments (create_db_init_job = true).
+
+resource "azurerm_container_app_job" "db_init" {
+  count = var.create_db_init_job ? 1 : 0
+
+  name                         = "db-init"
+  container_app_environment_id = azurerm_container_app_environment.main.id
+  resource_group_name          = var.resource_group_name
+  location                     = var.location
+  tags                         = var.tags
+
+  replica_timeout_in_seconds = 300
+  replica_retry_limit        = 2
+
+  manual_trigger_config {
+    parallelism              = 1
+    replica_completion_count = 1
+  }
+
+  registry {
+    server               = var.acr_login_server
+    username             = var.acr_username
+    password_secret_name = "acr-password"
+  }
+
+  secret {
+    name  = "acr-password"
+    value = var.acr_password
+  }
+
+  template {
+    container {
+      name    = "db-init"
+      image   = "${var.acr_login_server}/agent-orchestrator:${var.image_tag}"
+      cpu     = 0.25
+      memory  = "0.5Gi"
+      command = ["/bin/sh", "-c", "for i in 1 2 3 4 5; do python /app/init_db.py && exit 0 || sleep 10; done; exit 1"]
+
+      env {
+        name  = "DATABASE_URL"
+        value = local.database_url_pg
+      }
+    }
+  }
+
+  depends_on = [azurerm_container_app.postgresql]
+}

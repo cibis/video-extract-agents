@@ -20,12 +20,12 @@ variable "db_admin_password" {
 
 variable "agent_model" {
   type    = string
-  default = "anthropic/claude-sonnet-4-6"
+  default = "bedrock/us.amazon.nova-2-lite-v1:0"
 }
 
 variable "tool_frontier_model" {
   type    = string
-  default = "anthropic/claude-opus-4-6"
+  default = "bedrock/us.amazon.nova-2-lite-v1:0"
 }
 
 variable "model_aliases_override" {

@@ -196,13 +196,13 @@ services:
 
   agent-orchestrator:
     build:
-      context: ../../backend/agent-orchestrator
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: backend/agent-orchestrator/Dockerfile
     ports:
       - "8001:8001"
     environment:
       <<: *common-python-env
-      AGENT_MODEL: ${AGENT_MODEL:-anthropic/claude-sonnet-4-6}
+      AGENT_MODEL: ${AGENT_MODEL:-bedrock/us.amazon.nova-2-lite-v1:0}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}

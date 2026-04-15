@@ -76,14 +76,14 @@ variable "storage_account_key" {
 
 variable "agent_model" {
   type        = string
-  description = "LiteLLM model string for agent reasoning, e.g. anthropic/claude-sonnet-4-6, openai/gpt-4o, bedrock/us.anthropic.claude-sonnet-4-5-20251001-v1:0"
-  default     = "anthropic/claude-sonnet-4-6"
+  description = "LiteLLM model string for agent reasoning, e.g. bedrock/us.amazon.nova-2-lite-v1:0, anthropic/claude-sonnet-4-6, openai/gpt-4o"
+  default     = "bedrock/us.amazon.nova-2-lite-v1:0"
 }
 
 variable "tool_frontier_model" {
   type        = string
   description = "LiteLLM model string for mcp-server-analysis vision tools"
-  default     = "anthropic/claude-opus-4-6"
+  default     = "bedrock/us.amazon.nova-2-lite-v1:0"
 }
 
 variable "model_aliases_override" {
@@ -172,6 +172,12 @@ variable "postgres_persistent_volume" {
   type        = bool
   default     = true
   description = "Mount an Azure Files volume for PostgreSQL data persistence. Set false in ephemeral test environments — Azure Files SMB does not support chmod, which causes initdb to fail on cold starts."
+}
+
+variable "create_db_init_job" {
+  type        = bool
+  default     = false
+  description = "Create an ACA Container App Job that runs init_db.py against the internal PostgreSQL on demand. Enable in ephemeral test environments where the DB starts empty."
 }
 
 variable "tags" {
