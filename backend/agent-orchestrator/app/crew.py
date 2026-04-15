@@ -497,6 +497,7 @@ async def run_crew(
         job_id=job_id,
         session_id=session_id,
         keyframe_index_assets=keyframe_index_assets,
+        tool_catalogue=tool_catalogue,
     )
     processing_task = make_processing_task(processor, job_id=job_id, user_id=user_id)
 

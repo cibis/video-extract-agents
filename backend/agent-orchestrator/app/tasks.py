@@ -214,7 +214,32 @@ def make_analysis_task(
     job_id: str = "",
     session_id: str | None = None,
     keyframe_index_assets: dict[str, str] | None = None,
+    tool_catalogue: list[dict] | None = None,
 ) -> Task:
+    # Derive analysis vs processing-only tool names from the live catalogue so the
+    # instruction stays accurate as tools are added or removed from each server.
+    _catalogue = tool_catalogue or []
+    _analysis_names: set[str] = {t["name"] for t in _catalogue if t.get("server") == "analysis"}
+    _processing_only_names: set[str] = {
+        t["name"] for t in _catalogue
+        if t.get("server") == "processing" and t["name"] not in _analysis_names
+    }
+    # Fallbacks when catalogue is empty (e.g. during unit tests or server unavailability)
+    if not _analysis_names:
+        _analysis_names = {
+            "extract_frames", "detect_motion", "detect_motion_sports", "detect_objects",
+            "analyze_scene", "detect_objects_vision", "estimate_height_above_surface",
+            "transcribe_audio", "query_asset", "write_query_asset", "read_asset",
+            "write_segments_asset",
+        }
+    if not _processing_only_names:
+        _processing_only_names = {
+            "extract_clips_bulk", "extract_clip", "merge_clips",
+            "split_video", "transform_video", "write_asset",
+        }
+    _analysis_list = ", ".join(sorted(_analysis_names))
+    _processing_list = ", ".join(sorted(_processing_only_names))
+
     video_list = "\n".join(f"  - {u}" for u in video_urls) if video_urls else "  (none)"
 
     context_block = (
@@ -270,7 +295,10 @@ def make_analysis_task(
             "  - When you need values from a result blob, use query_asset with a specific "
             "JSONPath (e.g. '$.high_motion_segments[*]' or '$.frames[*].timestamp_seconds') "
             "instead of reading the full blob.\n\n"
-            "For each tool specified in selected_tools, invoke it with the required inputs. "
+            f"From selected_tools, invoke ONLY analysis tools that are available in your tool list "
+            f"({_analysis_list}). "
+            f"Do NOT attempt to call processing tools ({_processing_list}) — these are handled "
+            "by the processing agent in a separate step after this task completes. "
             "Always pass job_id and session_id to every tool call. "
             "MANDATORY FIRST STEP: For each video, call extract_frames with keyframe_index_asset "
             "before calling any other analysis tool. extract_frames returns result_asset — pass "

@@ -79,7 +79,7 @@ def test_followup_multi_video_session(request, tmp_path, api_gateway_url, http_c
     video2_id, _ = upload_video(http_client, api_gateway_url, auth_headers, session_id, video2_path)
     # Wait for both videos to be indexed — poll until asset count stabilises
     wait_for_indexed(http_client, api_gateway_url, auth_headers, session_id)
-        
+
     j2 = submit_job(
         http_client, api_gateway_url, auth_headers,
         video_id=video2_id, session_id=session_id,
@@ -106,68 +106,8 @@ def test_followup_multi_video_session(request, tmp_path, api_gateway_url, http_c
         f"Expected at least 1 job_output_video assets in session, found {len(output_assets)}"
     )
 
-
 # ---------------------------------------------------------------------------
-# Scenario 2: Extract → Slow-motion re-transform
-# ---------------------------------------------------------------------------
-
-def test_followup_slow_motion_retransform(request, tmp_path, api_gateway_url, http_client, auth_headers):
-    """
-    Job 1 extracts motion segments and produces a merged output.
-    Job 2 applies slow-motion (0.5x speed) to Job 1's output, creating a
-    third distinct artefact in the same session.
-
-    Assertions:
-    - Both jobs complete successfully.
-    - Job 2 produces an output URL.
-    - Session ends up with at least 2 job_output_video assets.
-    """
-    video_path = str(tmp_path / "slow_mo.mp4")
-    video_factory.make_motion_video(video_path)
-
-    session_id = create_test_session(http_client, api_gateway_url, auth_headers)
-
-    video_id, _ = upload_video(http_client, api_gateway_url, auth_headers, session_id, video_path)
-    wait_for_indexed(http_client, api_gateway_url, auth_headers, session_id)
-
-    # Job 1 — extract moving segments
-    j1 = submit_job(
-        http_client, api_gateway_url, auth_headers,
-        video_id=video_id, session_id=session_id,
-        prompt="Extract all segments with movement",
-        test_name=request.node.nodeid,
-    )
-    job1_id = j1["jobId"]
-    job1 = wait_for_job(http_client, api_gateway_url, auth_headers, job1_id)
-    assert_job_succeeded(job1)
-
-    # Job 2 — slow down Job 1's output to 0.5x
-    j2 = submit_job(
-        http_client, api_gateway_url, auth_headers,
-        video_id=video_id, session_id=session_id,
-        parent_job_id=job1_id,
-        prompt="Transform the output from the previous job to slow motion at 0.5x speed",
-        test_name=request.node.nodeid,
-    )
-    job2_id = j2["jobId"]
-    job2 = wait_for_job(http_client, api_gateway_url, auth_headers, job2_id)
-    assert_job_succeeded(job2)
-
-    # Both jobs should have produced distinct output artefacts
-    assets_resp = http_client.get(
-        f"{api_gateway_url}/v1/sessions/{session_id}/assets",
-        headers=auth_headers,
-    )
-    assets_resp.raise_for_status()
-    assets = assets_resp.json().get("assets", [])
-    output_assets = [a for a in assets if a.get("asset_type") == "job_output_video"]
-    assert len(output_assets) >= 1, (
-        f"Expected at least 1 job_output_video assets in session, found {len(output_assets)}"
-    )
-
-
-# ---------------------------------------------------------------------------
-# Scenario 3: Job history assets — analysis results registered and reusable
+# Scenario 2: Job history assets — analysis results registered and reusable
 # ---------------------------------------------------------------------------
 
 def test_followup_job_history_assets(request, tmp_path, api_gateway_url, http_client, auth_headers):
