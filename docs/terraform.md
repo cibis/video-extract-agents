@@ -479,40 +479,33 @@ Each environment requires typing `destroy-dev` or `destroy-prod` at the confirma
 
 ## Running Terraform
 
-### First time (bootstrap state storage first)
+### Dev environment (first time)
+
+Use the bootstrap script — it handles the two-phase apply (ACR must exist before container
+apps can be created) and logs output to `gitlab-logs/terraform/`:
 
 ```bash
-# See azure-credentials.md for bootstrap commands
-
-# Authenticate
-az login
-export ARM_SUBSCRIPTION_ID=<sub-id>
-export ARM_TENANT_ID=<tenant-id>
+# Fill in scripts/credentials.sh once (gitignored), then:
+bash scripts/bootstrap-dev.sh
 ```
 
-### Dev environment
+### Prod environment (first time)
 
 ```bash
-cd infrastructure/terraform/envs/dev
-terraform init
-terraform plan -var="db_admin_password=..." -var="anthropic_api_key=sk-ant-..."
-terraform apply
+bash scripts/bootstrap-prod.sh
 ```
 
-Or using a `terraform.tfvars` file (never commit this):
-```hcl
-db_admin_password   = "your-secure-password"
-anthropic_api_key   = "sk-ant-..."
-entra_tenant_id     = "your-tenant-id"
-entra_client_id     = "your-client-id"
-```
+### Manual apply (subsequent infrastructure changes)
 
-### Prod environment
+After initial bootstrap, apply Terraform changes directly. Credentials must be exported first
+(source `scripts/credentials.sh` or export `ARM_*` / `TF_VAR_*` vars manually):
 
 ```bash
-cd infrastructure/terraform/envs/prod
-terraform init
-terraform plan -var="image_tag=v1.2.3" ...
+source scripts/credentials.sh
+
+cd infrastructure/terraform/envs/dev   # or envs/prod
+terraform init -backend-config="access_key=$TF_STATE_ACCESS_KEY" -reconfigure -input=false
+terraform plan
 terraform apply
 ```
 

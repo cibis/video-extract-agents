@@ -17,8 +17,8 @@
 #
 # What it does NOT destroy (one-time manual setup from getting-started.md §5–6):
 #   - Terraform state storage (getting-started.md §5.1):
-#       resource group   ve-tfstate-rg
-#       storage accounts vetfstatedev, vetfstateprod, vetfstatetest  (container: tfstate)
+#       resource group   terraform-state-rg
+#       storage account  tfstatevideoextract  (container: tfstate)
 #   - CI service principal: 'video-extract-ci' in Azure AD  (getting-started.md §3.5)
 #   - Azure Entra External ID (getting-started.md §6):
 #       External ID tenant
@@ -30,21 +30,8 @@
 #   scripts/teardown.sh --dev        # destroys dev only
 #   scripts/teardown.sh --prod       # destroys prod only
 #
-# Required environment variables:
-#   AZURE_CLIENT_ID         Terraform service principal app ID
-#   AZURE_CLIENT_SECRET     Terraform service principal password
-#   AZURE_TENANT_ID         Azure AD tenant ID
-#   AZURE_SUBSCRIPTION_ID   Azure subscription ID
-#   TF_STATE_ACCESS_KEY     Storage account access key for Terraform state backend
-#   DB_ADMIN_PASSWORD       PostgreSQL admin password (any value satisfies the Terraform
-#                           parser during destroy; not used in any Azure deletion API call)
-#
-# Optional (values default to empty / "latest"):
-#   TF_VAR_image_tag               used for prod where no default is set
-#   TF_VAR_anthropic_api_key
-#   TF_VAR_openai_api_key
-#   TF_VAR_aws_access_key_id
-#   TF_VAR_aws_secret_access_key
+# Credentials are pre-filled below (file is gitignored — never commit).
+# Override any value by exporting the variable before running.
 #
 # See docs/azure-credentials.md for where to find each value.
 
@@ -52,6 +39,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# ─── Credentials ──────────────────────────────────────────────────────────────
+
+# shellcheck source=credentials.sh
+source "$(dirname "${BASH_SOURCE[0]}")/credentials.sh"
 
 # ─── Argument parsing ─────────────────────────────────────────────────────────
 
@@ -73,32 +65,6 @@ else
         ;;
     esac
   done
-fi
-
-# ─── Required env var checks ──────────────────────────────────────────────────
-
-REQUIRED_VARS=(
-  AZURE_CLIENT_ID
-  AZURE_CLIENT_SECRET
-  AZURE_TENANT_ID
-  AZURE_SUBSCRIPTION_ID
-  TF_STATE_ACCESS_KEY
-  DB_ADMIN_PASSWORD
-)
-
-missing=()
-for var in "${REQUIRED_VARS[@]}"; do
-  if [ -z "${!var:-}" ]; then
-    missing+=("$var")
-  fi
-done
-
-if [ ${#missing[@]} -gt 0 ]; then
-  echo "ERROR: Missing required environment variables:"
-  printf '  %s\n' "${missing[@]}"
-  echo ""
-  echo "Set these in your shell before running. See docs/azure-credentials.md for values."
-  exit 1
 fi
 
 # ─── Auth — map AZURE_* → ARM_* (mirrors .gitlab-ci.yml &terraform-setup) ────
@@ -147,12 +113,9 @@ destroy_env() {
   if [ "$env" = "prod" ]; then
     echo "  ┌─ PRODUCTION WARNING ─────────────────────────────────────────────┐"
     echo "  │                                                                    │"
-    echo "  │  The prod Key Vault (ve-prod-kv) has purge protection enabled.    │"
-    echo "  │  After destroy it enters a 7-day soft-delete period and cannot    │"
-    echo "  │  be purged early. Re-creating prod within 7 days requires         │"
-    echo "  │  recovering the vault before running terraform apply:             │"
-    echo "  │                                                                    │"
-    echo "  │    az keyvault recover --name ve-prod-kv                          │"
+    echo "  │  This will permanently delete all production data including       │"
+    echo "  │  PostgreSQL data, all uploaded videos, and all output files.      │"
+    echo "  │  There is no undo.                                                 │"
     echo "  │                                                                    │"
     echo "  └────────────────────────────────────────────────────────────────────┘"
     echo ""
@@ -193,8 +156,8 @@ echo "  The following one-time manual resources were NOT destroyed"
 echo "  (see getting-started.md §5-6):"
 echo ""
 echo "    Terraform state storage (§5.1):"
-echo "      rg: ve-tfstate-rg"
-echo "      storage accounts: vetfstatedev, vetfstateprod, vetfstatetest"
+echo "      rg: terraform-state-rg"
+echo "      storage account: tfstatevideoextract  (container: tfstate)"
 echo ""
 echo "    CI service principal (§3.5): video-extract-ci"
 echo ""

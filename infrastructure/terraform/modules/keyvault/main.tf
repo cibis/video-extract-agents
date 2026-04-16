@@ -1,7 +1,13 @@
 data "azurerm_client_config" "current" {}
 
+resource "random_string" "suffix" {
+  length  = 4
+  upper   = false
+  special = false
+}
+
 resource "azurerm_key_vault" "main" {
-  name                       = "ve-${var.environment}-kv"
+  name                       = "ve-${var.environment}-kv-${random_string.suffix.result}"
   resource_group_name        = var.resource_group_name
   location                   = var.location
   tenant_id                  = data.azurerm_client_config.current.tenant_id
@@ -52,7 +58,7 @@ resource "azurerm_key_vault_secret" "acs_connection_string" {
 }
 
 resource "azurerm_key_vault_secret" "appinsights_connection_string" {
-  count        = var.appinsights_connection_string != "" ? 1 : 0
+  count        = var.create_appinsights_secret ? 1 : 0
   name         = "appinsights-connection-string"
   value        = var.appinsights_connection_string
   key_vault_id = azurerm_key_vault.main.id

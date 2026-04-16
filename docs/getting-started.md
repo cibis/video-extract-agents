@@ -140,20 +140,25 @@ GitLab will push to GitHub automatically on every push.
 ```bash
 az login
 
-# Terraform state storage
-az group create --name ve-tfstate-rg --location westeurope
+# Terraform state storage (one account, three state keys — dev/prod/test)
+az group create --name terraform-state-rg --location eastus
 
 az storage account create \
-  --name vetfstatedev \
-  --resource-group ve-tfstate-rg \
+  --name tfstatevideoextract \
+  --resource-group terraform-state-rg \
   --sku Standard_LRS \
-  --kind StorageV2
+  --kind StorageV2 \
+  --min-tls-version TLS1_2
 
 az storage container create \
   --name tfstate \
-  --account-name vetfstatedev
+  --account-name tfstatevideoextract
 
-# Repeat for prod (vetfstateprod) and test (vetfstatetest)
+# Retrieve the access key (needed for TF_STATE_ACCESS_KEY CI variable and bootstrap-dev.sh)
+az storage account keys list \
+  --account-name tfstatevideoextract \
+  --resource-group terraform-state-rg \
+  --query "[0].value" -o tsv
 ```
 
 ### 5.2 Azure Container Registry
@@ -194,31 +199,46 @@ The ACR is provisioned by Terraform (`modules/acr/`) when you run `terraform app
 
 ---
 
-## 7. Azure — dev environment (Terraform)
+## 7. Azure — dev and prod environments (Terraform)
+
+Both environments are provisioned using one-time bootstrap scripts that handle
+the two-phase Terraform apply (ACR must exist before container apps can be created).
+
+All credentials live in a single gitignored file — fill it in once, then run either script:
 
 ```bash
-cd infrastructure/terraform/envs/dev
+# Edit scripts/credentials.sh and fill in your values (file is gitignored)
+# Then run:
 
-# Copy and fill in your values
-cp terraform.tfvars.example terraform.tfvars
-# Edit terraform.tfvars with your subscription ID, passwords, API keys, etc.
-
-terraform init
-terraform plan
-terraform apply
+bash scripts/bootstrap-dev.sh    # provisions video-extract-dev
+bash scripts/bootstrap-prod.sh   # provisions video-extract-prod
 ```
 
-This creates:
-- Resource group `video-extract-dev`
-- Azure Container Registry (Basic SKU for dev)
-- Azure Container Apps environment + Log Analytics workspace
-- All 9 container apps (postgresql, api-gateway, agent-orchestrator, preprocessing-worker, notification-worker, mcp-server-analysis, mcp-server-processing, angular-shell, librechat)
-- Blob Storage account (1 container: `videos`; Azure Files share for PostgreSQL persistence)
-- Service Bus namespace (5 queues)
+Both scripts:
+- Source `scripts/credentials.sh` for all Azure/Terraform credentials
+- Phase 1: create ACR only (`-target=module.acr`)
+- Push placeholder images so container apps can be created immediately
+- Phase 2: full `terraform apply`
+- Log all Terraform output to `gitlab-logs/terraform/bootstrap-{dev|prod}-<timestamp>.log`
+
+This creates (per environment):
+- Resource group `video-extract-{dev|prod}`
+- Azure Container Registry (Basic for dev, Standard for prod)
+- Azure Container Apps environment + all 9 container apps
+- Blob Storage (LRS for dev, ZRS for prod)
+- Service Bus namespace (Standard for dev, Premium for prod) + 5 queues
 - Application Insights
 - Azure Front Door (Standard)
 - Azure Communication Services
-- Azure Key Vault (secrets stored; managed identity wiring deferred)
+- Azure Key Vault (secrets injected; purged immediately on destroy)
+
+**After bootstrap, get the UI URL:**
+
+```bash
+az containerapp show --name angular-shell \
+  --resource-group video-extract-dev \
+  --query "properties.configuration.ingress.fqdn" --output tsv
+```
 
 ---
 
@@ -370,43 +390,18 @@ Integration tests require an Anthropic API key (`ANTHROPIC_API_KEY`) in the agen
 
 ## 11. First deployment to Azure
 
-### 11.1 Build and push images
+### 11.1 Trigger the CI pipeline
 
-```bash
-# Get the ACR login server from Terraform output (after terraform apply)
-ACR_SERVER=$(cd infrastructure/terraform/envs/dev && terraform output -raw acr_login_server)
-az acr login --name "${ACR_SERVER%%.*}"
+After the bootstrap scripts provision the infrastructure (§7), the container apps are running
+placeholder images. The real application images are built and pushed by the GitLab CI pipeline.
 
-IMAGE_TAG=$(git rev-parse --short HEAD)
+Push a commit to `main` (or trigger the pipeline manually in GitLab) — the pipeline will:
+1. Build all 8 Docker images tagged with the commit SHA
+2. Run tests against an ephemeral Azure test environment
+3. Push images to ACR and deploy to `video-extract-dev`
+4. (With manual approval) deploy to `video-extract-prod`
 
-# Build and push backend services
-for SERVICE in api-gateway agent-orchestrator preprocessing-worker notification-worker; do
-  docker build -t $ACR_SERVER/$SERVICE:$IMAGE_TAG backend/$SERVICE/
-  docker push $ACR_SERVER/$SERVICE:$IMAGE_TAG
-done
-
-# Build and push MCP servers
-for SERVICE in mcp-server-analysis mcp-server-processing; do
-  docker build -t $ACR_SERVER/$SERVICE:$IMAGE_TAG mcp-servers/$SERVICE/
-  docker push $ACR_SERVER/$SERVICE:$IMAGE_TAG
-done
-
-# Build and push frontend services
-docker build -t $ACR_SERVER/angular-shell:$IMAGE_TAG frontend/angular-shell/
-docker push $ACR_SERVER/angular-shell:$IMAGE_TAG
-
-docker build -t $ACR_SERVER/librechat:$IMAGE_TAG frontend/librechat/
-docker push $ACR_SERVER/librechat:$IMAGE_TAG
-```
-
-### 11.2 Deploy via Terraform
-
-```bash
-cd infrastructure/terraform/envs/dev
-terraform apply -var="image_tag=$IMAGE_TAG"
-```
-
-### 11.3 Initialise the Azure database
+### 11.2 Initialise the Azure database
 
 The PostgreSQL container starts empty on first deploy. Run `init_db.py` once to create all tables.
 

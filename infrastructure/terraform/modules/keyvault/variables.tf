@@ -37,10 +37,15 @@ variable "acs_connection_string" {
 }
 
 variable "appinsights_connection_string" {
-  type        = string
-  sensitive   = true
-  default     = ""
-  description = "App Insights connection string — empty string skips secret creation"
+  type      = string
+  sensitive = true
+  default   = ""
+}
+
+variable "create_appinsights_secret" {
+  type        = bool
+  default     = true
+  description = "Set to false to skip Key Vault secret creation for App Insights (must be a static value, not computed)"
 }
 
 variable "tags" {

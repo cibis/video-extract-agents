@@ -109,3 +109,4 @@ screenshots/
 # ── Private / local-only docs & scripts ───────────────────────────────────
 docs/_github-push.md
 scripts/push-github.sh
+scripts/credentials.sh

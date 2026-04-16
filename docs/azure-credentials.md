@@ -211,44 +211,8 @@ Add the value as GitLab CI/CD variable `TF_STATE_ACCESS_KEY` (masked, protected)
 
 **Used for:** uploading videos, storing keyframes, segments, and processed outputs.
 
-> Terraform creates this automatically via `modules/storage`. Follow these steps only if creating manually.
-
-### Create via Azure CLI
-
-```bash
-# Create resource group (skip if already exists)
-az group create --name video-extract-dev --location eastus
-
-# Create storage account
-az storage account create \
-  --name videoextractdev<random6chars> \
-  --resource-group video-extract-dev \
-  --location eastus \
-  --sku Standard_LRS \
-  --kind StorageV2 \
-  --min-tls-version TLS1_2 \
-  --https-only true
-
-# Create the videos container
-az storage container create \
-  --name videos \
-  --account-name videoextractdev<random6chars> \
-  --public-access off
-```
-
-### Create via Azure portal
-
-1. Search **Storage accounts** → **Create**
-2. **Basics:**
-   - Resource group: `video-extract-dev`
-   - Storage account name: `videoextractdev<6chars>` (must be globally unique)
-   - Region: East US
-   - Redundancy: LRS (dev) or ZRS (prod)
-3. **Advanced:** Minimum TLS → 1.2, Secure transfer required → Enabled
-4. **Review + create** → **Create**
-5. After creation: go to **Containers** → **+ Container**
-   - Name: `videos`
-   - Access level: Private
+> Terraform creates this automatically via `modules/storage` — no manual steps required.
+> Run `bash scripts/bootstrap-dev.sh` or `bash scripts/bootstrap-prod.sh`.
 
 ### Get the connection string
 
@@ -282,45 +246,8 @@ az storage account show-connection-string \
 
 **Used for:** async event passing between all backend services.
 
-> Terraform creates this automatically. Follow these steps only if creating manually.
-
-### Create via Azure CLI
-
-```bash
-# Create namespace
-az servicebus namespace create \
-  --name videoextract-dev-servicebus \
-  --resource-group video-extract-dev \
-  --location eastus \
-  --sku Standard
-
-# Create the five required queues
-for queue in video-uploaded video-indexed job-queued job-completed job-failed; do
-  az servicebus queue create \
-    --name $queue \
-    --namespace-name videoextract-dev-servicebus \
-    --resource-group video-extract-dev \
-    --max-delivery-count 10
-done
-```
-
-### Create via Azure portal
-
-1. Search **Service Bus** → **Create**
-2. **Basics:**
-   - Resource group: `video-extract-dev`
-   - Namespace name: `videoextract-dev-servicebus`
-   - Location: East US
-   - Pricing tier: Standard (dev) / Premium (prod)
-3. **Review + create** → **Create**
-4. After creation: go to the namespace → **Queues** → **+ Queue**
-
-   Create each of the following queues (Max delivery count: 10):
-   - `video-uploaded`
-   - `video-indexed`
-   - `job-queued`
-   - `job-completed`
-   - `job-failed`
+> Terraform creates this automatically — no manual steps required.
+> Run `bash scripts/bootstrap-dev.sh` or `bash scripts/bootstrap-prod.sh`.
 
 ### Get the connection string
 
@@ -479,28 +406,8 @@ https://login.microsoftonline.com/<tenant-id>/discovery/v2.0/keys
 
 **Used for:** storing Docker images built by GitLab CI.
 
-> Terraform creates this automatically. Follow these steps only if creating manually.
-
-### Create via Azure CLI
-
-```bash
-az acr create \
-  --name videoextractdevacr \
-  --resource-group video-extract-dev \
-  --sku Basic \
-  --admin-enabled true
-```
-
-### Create via Azure portal
-
-1. Search **Container registries** → **Create**
-2. **Basics:**
-   - Resource group: `video-extract-dev`
-   - Registry name: `videoextractdevacr` (must be globally unique)
-   - Location: East US
-   - SKU: Basic (dev), Standard (prod)
-3. **Review + create** → **Create**
-4. After creation: go to **Settings** → **Access keys** → enable **Admin user**
+> Terraform creates this automatically — no manual steps required.
+> Run `bash scripts/bootstrap-dev.sh` or `bash scripts/bootstrap-prod.sh`.
 
 ### Get the credentials
 
