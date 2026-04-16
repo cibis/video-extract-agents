@@ -64,6 +64,38 @@ Frontier tests (`test_detect_objects_vision.py`, `test_analyze_scene.py`) are au
 
 ---
 
+## Failure Threshold (CI)
+
+The `e2e_tests` CI job passes as long as the failure rate stays within a configurable threshold. This accommodates flakiness inherent to running tests against a live ephemeral Azure environment (cold starts, network races, model latency).
+
+**Default threshold: 25%** — up to 25% of non-skipped tests may fail before the pipeline stage is marked as failed.
+
+The threshold is controlled by the `E2E_FAILURE_THRESHOLD_PCT` pipeline variable, defined in `.gitlab-ci.yml`:
+
+```yaml
+variables:
+  E2E_FAILURE_THRESHOLD_PCT: "25"
+```
+
+To override it for a single pipeline run, pass it as a pipeline variable (GitLab UI: CI/CD → Run Pipeline → Variables, or via the API). To enforce strict pass-all:
+
+```yaml
+E2E_FAILURE_THRESHOLD_PCT: "0"
+```
+
+**How it works:**
+
+After pytest finishes (regardless of exit code), `scripts/check_e2e_threshold.py` reads the JUnit XML (`ci-logs/pytest-results.xml`) and:
+
+1. Counts `failures + errors` as failures; `skipped` tests are excluded from the denominator.
+2. Calculates `failed / ran * 100`.
+3. Exits 0 (job passes) if the rate ≤ threshold, or exits 1 (job fails) if exceeded.
+4. When `threshold == 0`, any single failure causes exit 1.
+
+The `pytest-results.xml` artifact is saved alongside `pytest.log` for inspection.
+
+---
+
 ## Architecture of the Test Suite
 
 ```

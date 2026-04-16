@@ -195,14 +195,11 @@ def make_plan_task(
             "  - segments: list of {start_seconds, end_seconds, reason, video_url}\n"
             "  - selected_tools: list of {tool_name, rationale, "
             "keyframe_index_asset (from above)}\n"
-            "  - final_output_name: output filename\n"
-            "Do NOT include an 'operations' field or any step-by-step pseudocode with "
-            "example input/output values. The analysis agent executes tools directly and "
-            "does not need pseudocode."
+            "  - operations: list of processing steps\n"
+            "  - final_output_name: output filename"
         ),
         expected_output=(
-            "A JSON object with: videos, segments, selected_tools, final_output_name. "
-            "No 'operations' field."
+            "A JSON object with: videos, segments, selected_tools, operations, final_output_name."
         ),
         agent=agent,
     )
@@ -295,10 +292,7 @@ def make_analysis_task(
             "  - When you need values from a result blob, use query_asset with a specific "
             "JSONPath (e.g. '$.high_motion_segments[*]' or '$.frames[*].timestamp_seconds') "
             "instead of reading the full blob.\n\n"
-            f"From selected_tools, invoke ONLY analysis tools that are available in your tool list "
-            f"({_analysis_list}). "
-            f"Do NOT attempt to call processing tools ({_processing_list}) — these are handled "
-            "by the processing agent in a separate step after this task completes. "
+            "For each tool specified in selected_tools, invoke it with the required inputs. "
             "Always pass job_id and session_id to every tool call. "
             "MANDATORY FIRST STEP: For each video, call extract_frames with keyframe_index_asset "
             "before calling any other analysis tool. extract_frames returns result_asset — pass "

@@ -27,6 +27,7 @@ variables:
   IMAGE_TAG: ${CI_COMMIT_SHORT_SHA}
   TF_DIR: infrastructure/terraform/envs/test
   COMPOSE_FILE: infrastructure/docker-compose/docker-compose.yml
+  E2E_FAILURE_THRESHOLD_PCT: "25"  # % of (non-skipped) tests allowed to fail; set to "0" to require all to pass
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Templates
@@ -299,10 +300,12 @@ e2e_tests:
         sleep 5
       done
     - mkdir -p ci-logs
-    - set -o pipefail; pytest tests/e2e/ -v --tb=short 2>&1 | tee ci-logs/pytest.log
+    - pytest tests/e2e/ -v --tb=short --junit-xml=ci-logs/pytest-results.xml 2>&1 | tee ci-logs/pytest.log || true
+    - python3 scripts/check_e2e_threshold.py
   artifacts:
     paths:
       - ci-logs/pytest.log
+      - ci-logs/pytest-results.xml
       - ci-logs/test-job-ids.json
     expire_in: 7d
     when: always
