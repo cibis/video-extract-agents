@@ -36,7 +36,6 @@ variables:
 .docker-login: &docker-login
   before_script:
     - docker system prune -af || true
-    - env | grep ACR || true
     - echo "$ACR_PASSWORD" | docker login "$ACR_REGISTRY" -u "$ACR_USERNAME" --password-stdin
 
 .azure-login: &azure-login
@@ -424,9 +423,8 @@ push_to_acr:
   <<: *docker-login
   script:
     - |
-      SERVICES=(api-gateway agent-orchestrator preprocessing-worker notification-worker
-                mcp-server-analysis mcp-server-processing angular-shell librechat)
-      for svc in "${SERVICES[@]}"; do
+      for svc in api-gateway agent-orchestrator preprocessing-worker notification-worker \
+                 mcp-server-analysis mcp-server-processing angular-shell librechat; do
         docker pull "$ACR_REGISTRY/$svc:$IMAGE_TAG"
         docker tag  "$ACR_REGISTRY/$svc:$IMAGE_TAG" "$ACR_REGISTRY/$svc:latest"
         docker push "$ACR_REGISTRY/$svc:latest"
