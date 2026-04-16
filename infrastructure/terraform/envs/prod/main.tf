@@ -141,6 +141,5 @@ module "keyvault" {
   service_bus_connection_string = azurerm_servicebus_namespace.main.default_primary_connection_string
   acs_connection_string         = module.appcommunication.primary_connection_string
   appinsights_connection_string = module.appinsights.connection_string
-  purge_protection_enabled      = true
   tags                          = local.tags
 }

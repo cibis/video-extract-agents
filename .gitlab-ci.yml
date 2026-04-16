@@ -460,9 +460,8 @@ deploy_dev:
   <<: *azure-login
   script:
     - |
-      SERVICES=(api-gateway agent-orchestrator preprocessing-worker notification-worker
-                mcp-server-analysis mcp-server-processing angular-shell librechat)
-      for svc in "${SERVICES[@]}"; do
+      for svc in api-gateway agent-orchestrator preprocessing-worker notification-worker \
+                 mcp-server-analysis mcp-server-processing angular-shell librechat; do
         az containerapp update \
           --name "$svc" \
           --resource-group "video-extract-dev" \
@@ -524,9 +523,8 @@ deploy_prod:
   <<: *azure-login
   script:
     - |
-      SERVICES=(api-gateway agent-orchestrator preprocessing-worker notification-worker
-                mcp-server-analysis mcp-server-processing angular-shell librechat)
-      for svc in "${SERVICES[@]}"; do
+      for svc in api-gateway agent-orchestrator preprocessing-worker notification-worker \
+                 mcp-server-analysis mcp-server-processing angular-shell librechat; do
         az containerapp update \
           --name "$svc" \
           --resource-group "video-extract-prod" \

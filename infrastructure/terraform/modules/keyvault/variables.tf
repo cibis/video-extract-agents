@@ -43,12 +43,6 @@ variable "appinsights_connection_string" {
   description = "App Insights connection string — empty string skips secret creation"
 }
 
-variable "purge_protection_enabled" {
-  type        = bool
-  default     = false
-  description = "Enable purge protection (recommended true for prod)"
-}
-
 variable "tags" {
   type    = map(string)
   default = {}

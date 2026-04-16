@@ -4,6 +4,44 @@ This document explains the Terraform layout, every module, every environment, an
 
 ---
 
+## Table of Contents
+
+- [Directory Structure](#directory-structure)
+- [Provider & State](#provider--state)
+- [Environments](#environments)
+  - [`envs/dev/`](#envsdev)
+  - [`envs/prod/`](#envsprod)
+  - [`envs/test/`](#envstest)
+- [Modules](#modules)
+  - [`modules/storage/`](#modulesstorage)
+  - [`modules/acr/`](#modulesacr)
+  - [`modules/aca/`](#modulesaca)
+  - [`modules/appinsights/`](#modulesappinsights)
+  - [`modules/frontdoor/`](#modulesfrontdoor)
+  - [`modules/appcommunication/`](#modulesappcommunication)
+  - [`modules/keyvault/`](#moduleskeyvault)
+- [Data Flow Between Modules](#data-flow-between-modules)
+- [KEDA Autoscaling](#keda-autoscaling)
+- [Teardown](#teardown)
+  - [What it destroys](#what-it-destroys)
+  - [What it does NOT destroy](#what-it-does-not-destroy)
+  - [Key Vault soft-delete note (prod)](#key-vault-soft-delete-note-prod)
+  - [Usage](#usage)
+- [Running Terraform](#running-terraform)
+  - [First time (bootstrap state storage first)](#first-time-bootstrap-state-storage-first)
+  - [Dev environment](#dev-environment)
+  - [Prod environment](#prod-environment)
+  - [Test environment (CI only)](#test-environment-ci-only)
+  - [Useful commands](#useful-commands)
+- [Accessing the UI Per Environment](#accessing-the-ui-per-environment)
+  - [Local (docker-compose)](#local-docker-compose)
+  - [Dev environment](#dev-environment-1)
+  - [Prod environment](#prod-environment-1)
+  - [Test environment (ephemeral / CI)](#test-environment-ephemeral--ci)
+- [Tagging Strategy](#tagging-strategy)
+
+---
+
 ## Directory Structure
 
 ```
@@ -69,7 +107,6 @@ Persistent development environment. Destroyed and recreated manually only.
 | Storage replication | LRS (default) |
 | ACA min replicas | 0 (scale to zero; PostgreSQL fixed at 1) |
 | ACA max replicas | 5 |
-| Key Vault purge protection | false |
 
 All secrets are stored in Key Vault. Application Insights and Front Door are provisioned.
 
@@ -88,9 +125,8 @@ Persistent production environment with higher-tier resources and redundancy.
 | Storage replication | ZRS (zone-redundant) |
 | ACA min replicas | 1 (always warm) |
 | ACA max replicas | 20 |
-| Key Vault purge protection | true |
 
-Prod differs from dev in: higher SKUs, zone-redundant storage, larger PostgreSQL volume (128 GB vs 32 GB), no scale-to-zero (`min_replicas = 1`), purge protection on Key Vault.
+Prod differs from dev in: higher SKUs, zone-redundant storage, larger PostgreSQL volume (128 GB vs 32 GB), no scale-to-zero (`min_replicas = 1`).
 
 ---
 
@@ -298,7 +334,7 @@ Creates an Azure Key Vault and stores all sensitive values as secrets.
 - `azurerm_key_vault.main` — `ve-<env>-kv`
   - Standard SKU
   - 7-day soft delete retention
-  - Purge protection: false (dev), true (prod)
+  - Purge protection: false
   - Access policy: grants the Terraform service principal full secret management rights
 - Secrets stored:
   - `anthropic-api-key`
@@ -364,6 +400,80 @@ Four services use HTTP concurrency scaling via `http_scale_rule` blocks:
 | `librechat` | 50 |
 
 All services scale to zero when idle (`min_replicas = 0`) in dev and test, except `postgresql` which is hardcoded to `min_replicas = 1` in all environments. In prod, `min_replicas = 1` keeps all services warm.
+
+---
+
+## Teardown
+
+`scripts/teardown.sh` destroys the dev and/or prod Terraform-managed environments in full. It is the manual counterpart to the CI `aca_test_env_destroy` stage.
+
+### What it destroys
+
+Everything inside the environment resource group:
+
+| Resource | Dev | Prod |
+|---|---|---|
+| Azure Container Apps environment + all 9 container apps | ✓ | ✓ |
+| PostgreSQL data (Azure Files volume) | ✓ | ✓ |
+| Blob Storage account (videos, keyframes, outputs, assets) | ✓ | ✓ |
+| Service Bus namespace + 5 queues | ✓ | ✓ |
+| Azure Container Registry + all Docker images | ✓ | ✓ |
+| Application Insights + Log Analytics workspace | ✓ | ✓ |
+| Azure Front Door CDN profile | ✓ | ✓ |
+| Azure Communication Services | ✓ | ✓ |
+| Key Vault | soft-deleted (7 days) | soft-deleted (7 days) |
+| Resource group (`video-extract-dev` / `video-extract-prod`) | ✓ | ✓ |
+
+### What it does NOT destroy
+
+These are the one-time manually created resources from `getting-started.md` §5–6. They are never part of the dev/prod Terraform state, so `terraform destroy` cannot affect them regardless.
+
+| Resource | getting-started.md section | Why preserved |
+|---|---|---|
+| Resource group `ve-tfstate-rg` | §5.1 | Holds the Terraform state storage accounts; destroying it would make all environments unmanageable |
+| Storage accounts `vetfstatedev`, `vetfstateprod`, `vetfstatetest` | §5.1 | Each holds a `tfstate` container with Terraform state files for the respective environment |
+| CI service principal `video-extract-ci` | §3.5 | Azure AD identity used by CI to authenticate to Azure — recreating it requires updating all GitLab CI variables |
+| Azure Entra External ID tenant | §6.1 | Tenant-level identity resource; cannot be provisioned by Terraform |
+| App registrations `video-extract-api`, `video-extract-spa` | §6.2–6.3 | Required for JWT issuance and validation; re-registering generates new client IDs that must be propagated everywhere |
+| Magic link user flow | §6.4 | Configured inside the Entra External ID tenant |
+
+### Key Vault soft-delete note
+
+Both Key Vaults (`ve-dev-kv`, `ve-prod-kv`) have purge protection disabled. After `terraform destroy` each vault enters the standard **7-day soft-delete period** but can be purged immediately if needed:
+
+```bash
+az keyvault purge --name ve-dev-kv
+az keyvault purge --name ve-prod-kv
+```
+
+If the vault is not purged and the environment is re-created within 7 days, Terraform will fail with "resource already exists in deleted state". Either purge first or recover and import:
+
+```bash
+az keyvault recover --name ve-prod-kv
+```
+
+### Usage
+
+```bash
+# Set required credentials in your shell first
+export AZURE_CLIENT_ID="..."
+export AZURE_CLIENT_SECRET="..."
+export AZURE_TENANT_ID="..."
+export AZURE_SUBSCRIPTION_ID="..."
+export TF_STATE_ACCESS_KEY="..."
+export DB_ADMIN_PASSWORD="..."   # any value — satisfies Terraform parser only
+
+# Destroy both environments (prompts separately for each)
+scripts/teardown.sh
+
+# Destroy dev only
+scripts/teardown.sh --dev
+
+# Destroy prod only
+scripts/teardown.sh --prod
+```
+
+Each environment requires typing `destroy-dev` or `destroy-prod` at the confirmation prompt before Terraform proceeds. The script requires Terraform to be installed locally.
 
 ---
 
