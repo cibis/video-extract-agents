@@ -103,3 +103,7 @@ screenshots/
 *.mov
 *.avi
 *.mkv
+
+# ── Private / local-only docs & scripts ───────────────────────────────────
+docs/_github-push.md
+scripts/push-github.sh

@@ -42,9 +42,13 @@ So here we are: a full Azure microservices stack, CrewAI orchestration, MCP tool
 
 The platform combines agentic AI orchestration (CrewAI + Claude), MCP tool servers over SSE transport, and a cloud-native Azure microservices architecture to enable natural-language-driven video processing at scale.
 
-| Home — session active with completed job history and chat | Session History — completed and failed jobs with output files |
-|---|---|
-| ![Home page with session and job history](screenshots/02-home.png) | ![Session history dashboard](screenshots/05-dashboard.png) |
+**Home — session active with completed job history and chat**
+
+![Home page with session and job history](screenshots/02-home.png)
+
+**Session History — completed and failed jobs with output files**
+
+![Session history dashboard](screenshots/05-dashboard.png)
 
 Key capabilities:
 
