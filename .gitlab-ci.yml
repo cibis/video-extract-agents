@@ -449,6 +449,33 @@ deploy_dev:
           --resource-group "video-extract-dev" \
           --image "$ACR_REGISTRY/$svc:$IMAGE_TAG"
       done
+    - |
+      echo "Running db-init to apply schema migrations..."
+      EXEC_NAME=$(az containerapp job start \
+        --name db-init \
+        --resource-group "video-extract-dev" \
+        --query "name" --output tsv)
+      echo "db-init execution: $EXEC_NAME — polling for completion..."
+      for i in $(seq 1 30); do
+        STATUS=$(az containerapp job execution list \
+          --name db-init \
+          --resource-group "video-extract-dev" \
+          --query "[?name=='$EXEC_NAME'].properties.status | [0]" \
+          --output tsv 2>/dev/null || echo "")
+        if [ "$STATUS" = "Succeeded" ]; then
+          echo "db-init completed successfully."
+          break
+        elif [ "$STATUS" = "Failed" ]; then
+          echo "ERROR: db-init failed in dev. Check ACA job logs."
+          az containerapp job execution list \
+            --name db-init \
+            --resource-group "video-extract-dev" \
+            --query "[?name=='$EXEC_NAME']" --output json || true
+          exit 1
+        fi
+        echo "  attempt $i/30: status=${STATUS:-pending} — waiting 10s..."
+        sleep 10
+      done
   environment:
     name: dev
   only:
@@ -485,6 +512,33 @@ deploy_prod:
           --name "$svc" \
           --resource-group "video-extract-prod" \
           --image "$ACR_REGISTRY/$svc:$IMAGE_TAG"
+      done
+    - |
+      echo "Running db-init to apply schema migrations..."
+      EXEC_NAME=$(az containerapp job start \
+        --name db-init \
+        --resource-group "video-extract-prod" \
+        --query "name" --output tsv)
+      echo "db-init execution: $EXEC_NAME — polling for completion..."
+      for i in $(seq 1 30); do
+        STATUS=$(az containerapp job execution list \
+          --name db-init \
+          --resource-group "video-extract-prod" \
+          --query "[?name=='$EXEC_NAME'].properties.status | [0]" \
+          --output tsv 2>/dev/null || echo "")
+        if [ "$STATUS" = "Succeeded" ]; then
+          echo "db-init completed successfully."
+          break
+        elif [ "$STATUS" = "Failed" ]; then
+          echo "ERROR: db-init failed in prod. Check ACA job logs."
+          az containerapp job execution list \
+            --name db-init \
+            --resource-group "video-extract-prod" \
+            --query "[?name=='$EXEC_NAME']" --output json || true
+          exit 1
+        fi
+        echo "  attempt $i/30: status=${STATUS:-pending} — waiting 10s..."
+        sleep 10
       done
   environment:
     name: prod

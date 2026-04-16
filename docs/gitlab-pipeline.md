@@ -453,6 +453,8 @@ done
 
 Updates all 8 container apps in the **persistent `video-extract-dev`** resource group to the new image. ACA performs a rolling update — the old revision stays alive until the new one passes its health check.
 
+After all containers are updated, the job starts the `db-init` ACA job and polls until it succeeds. This ensures schema migrations are applied on every deploy, not just on initial provisioning. The pipeline fails if `db-init` reports a failure.
+
 The `environment: name: dev` declaration registers this deployment in GitLab's Environments view, giving a history of what was deployed to dev and when.
 
 ---
@@ -495,7 +497,7 @@ for svc in "${SERVICES[@]}"; do
 done
 ```
 
-Identical to `deploy_dev` but targets `video-extract-prod`. ACA rolls out the new revision.
+Identical to `deploy_dev` but targets `video-extract-prod`. Runs `db-init` after the container update loop. ACA rolls out the new revision.
 
 ---
 
@@ -526,7 +528,7 @@ All of these must be set in GitLab → Settings → CI/CD → Variables as **mas
 | `AZURE_SUBSCRIPTION_ID` | `azure-login` template, Terraform | Azure subscription ID |
 | `DB_ADMIN_PASSWORD` | Terraform | PostgreSQL admin password for test env |
 | `ANTHROPIC_API_KEY` | Terraform → container env | Anthropic API key |
-| `TF_STATE_STORAGE_ACCOUNT` | Terraform backend init | State storage account name (`tfstatevideoextract`) |
+| `TF_STATE_ACCESS_KEY` | Terraform backend init | Access key for the `tfstatevideoextract` storage account (passed as `terraform init -backend-config="access_key=..."`) |
 
 Optional (only if using Bedrock or OpenAI):
 
@@ -712,4 +714,270 @@ If `aca_test_env_destroy` fails, clean up manually to avoid orphaned Azure resou
 az group delete \
   --name "video-extract-test-${PIPELINE_ID}" \
   --yes --no-wait
+```
+
+---
+
+## Completing a Release — Step-by-Step
+
+This section is the human-side runbook for everything from `push_to_acr` onward. Stages 1–7 are fully automated; stages 8–11 require monitoring, smoke testing, and a deliberate approval gate.
+
+---
+
+### Prerequisites (one-time setup)
+
+Before any of these stages can succeed, the following must be in place:
+
+1. **Azure service principal** — created with `Contributor` role on the subscription:
+   ```bash
+   az ad sp create-for-rbac \
+     --name ve-gitlab-ci \
+     --role Contributor \
+     --scopes /subscriptions/<subscription_id> \
+     --sdk-auth
+   ```
+   Save the output — it gives `clientId`, `clientSecret`, `tenantId`, `subscriptionId`.
+
+2. **ACR admin credentials** — enable admin on the registry:
+   ```bash
+   az acr update --name videoextractdevacr --admin-enabled true
+   az acr credential show --name videoextractdevacr
+   ```
+
+3. **GitLab CI variables set** (GitLab → Settings → CI/CD → Variables, all masked):
+   - `ACR_REGISTRY`, `ACR_USERNAME`, `ACR_PASSWORD`
+   - `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`
+   - `DB_ADMIN_PASSWORD`, `ANTHROPIC_API_KEY`, `TF_STATE_ACCESS_KEY`
+
+4. **Persistent dev and prod environments exist** — created once via Terraform:
+   ```bash
+   cd infrastructure/terraform/envs/dev && terraform init && terraform apply
+   cd infrastructure/terraform/envs/prod && terraform init && terraform apply
+   ```
+   These resource groups (`video-extract-dev`, `video-extract-prod`) are never destroyed by the pipeline.
+
+5. **Terraform remote state storage** — storage account named `tfstatevideoextract` with a container named `tfstate`:
+   ```bash
+   az storage account create --name tfstatevideoextract --resource-group video-extract-shared --sku Standard_LRS
+   az storage container create --name tfstate --account-name tfstatevideoextract
+   ```
+
+---
+
+### Step 1 — Merge to `main`
+
+The pipeline stages 1–7 run automatically on any branch push. Stages 8–11 are **gated to `main` only**.
+
+> If your pipeline already ran **on `main`** (not a feature branch), skip directly to Step 2 — stages 8–11 are already running or queued.
+
+To trigger stages 8–11 from a feature branch:
+
+1. Open a Merge Request into `main` in GitLab
+2. Ensure the MR pipeline (on your feature branch) has passed all stages including `aca_test_env_destroy`
+3. Have a reviewer approve the MR
+4. Merge — GitLab starts a new pipeline on `main`
+
+The `main` pipeline runs stages 1–7 again (fresh build, fresh test env, fresh destroy), then continues to stages 8–11.
+
+---
+
+### Step 2 — Verify `push_to_acr`
+
+This stage runs automatically after `aca_test_env_destroy` completes on `main`. It re-tags all 8 images as `:latest` in ACR.
+
+**Check it worked:**
+
+In the GitLab pipeline view, click the `push_to_acr` job and confirm all 8 `docker push` commands completed with `latest: digest: sha256:...`.
+
+Or via the Azure CLI — check all 8 services at once:
+```bash
+ACR=videoextractdevacr   # replace with your ACR name
+for svc in api-gateway agent-orchestrator preprocessing-worker notification-worker \
+           mcp-server-analysis mcp-server-processing angular-shell librechat; do
+  echo "=== $svc ==="
+  az acr repository show-tags \
+    --name $ACR --repository $svc \
+    --orderby time_desc --top 3 --output tsv
+done
+```
+
+Each service should show both `<commit-sha>` and `latest` at the top of the list with the same digest.
+
+**If this stage fails:**
+
+The most common cause is ACR credential expiry. Re-generate the ACR password in the Azure portal (ACR → Access keys → Regenerate) and update `ACR_PASSWORD` in GitLab CI variables, then re-run the job from the GitLab pipeline UI.
+
+---
+
+### Step 3 — Monitor `deploy_dev`
+
+This stage also runs automatically. It updates all 8 container apps in `video-extract-dev` to the new image.
+
+**Watch the rollout:**
+
+```bash
+# Live tail — single service (Ctrl-C to exit)
+watch -n 5 'az containerapp revision list \
+  --name api-gateway \
+  --resource-group video-extract-dev \
+  --output table'
+```
+
+ACA performs a rolling update — the old revision stays running until the new one passes its health check. A successful rollout looks like:
+
+```
+Name                         Active    TrafficWeight    ProvisioningState    RunningState
+---------------------------  --------  ---------------  -------------------  ------------
+api-gateway--<old-sha>       False     0                Succeeded            Stopped
+api-gateway--<new-sha>       True      100              Succeeded            Running
+```
+
+To check all 8 services at once (one-shot snapshot):
+
+```bash
+for svc in api-gateway agent-orchestrator preprocessing-worker notification-worker \
+           mcp-server-analysis mcp-server-processing angular-shell librechat; do
+  echo "=== $svc ==="
+  az containerapp revision list --name $svc --resource-group video-extract-dev --output table
+done
+```
+
+**Check logs if a container fails to start:**
+
+```bash
+az containerapp logs show \
+  --name api-gateway \
+  --resource-group video-extract-dev \
+  --tail 100 \
+  --output table
+```
+
+---
+
+### Step 4 — Smoke test dev
+
+Before approving production deployment, verify the key surfaces on dev.
+
+**Automated checks** (requires `az` CLI authenticated and `jq`):
+
+```bash
+scripts/smoke-test.sh dev
+```
+
+Checks: API Gateway `/health` → `{"status":"ok","db":"ok"}`, MCP tool catalogue (≥8 analysis tools, ≥4 processing tools), all 5 Service Bus queues have 0 dead-letter messages, all 8 container apps have ≥1 running replica. Exit code 0 = healthy.
+
+**Manual checks** (not covered by the script):
+
+- **Upload a test video** via the Angular shell (`https://<angular-shell-fqdn>`) and confirm:
+  - SAS token is returned, upload completes, preprocessing worker indexes the video (`GET /v1/sessions/{id}/assets`)
+- **Submit a job** via the LibreChat chat interface and confirm:
+  - Job progresses `queued` → `running` → `completed`, output URL is reachable
+
+If any check fails, **do not approve production**. Fix forward by pushing another commit to `main` or roll back dev from the Environments page (see "Rolling Back" section).
+
+---
+
+### Step 5 — Trigger `manual_approval`
+
+Once dev looks healthy, approve the production gate.
+
+**Via the GitLab UI:**
+
+1. Go to **GitLab → CI/CD → Pipelines**
+2. Find the pipeline on `main` that deployed to dev (it will show a ⏸ paused icon next to `manual_approval`)
+3. Click the pipeline to open the pipeline graph
+4. Click the **▶ play button** next to `manual_approval`
+5. Confirm in the dialog — `deploy_prod` starts immediately
+
+**Via the `glab` CLI:**
+
+```bash
+# List pipeline jobs to get the job ID for manual_approval
+glab ci status
+
+# Trigger the manual job by name
+glab ci run manual_approval
+```
+
+**Via the GitLab API:**
+
+```bash
+# Get the job ID:
+curl --header "PRIVATE-TOKEN: <your-token>" \
+  "https://gitlab.com/<group>/<project>/api/v4/pipelines/<pipeline_id>/jobs" \
+  | jq '.[] | select(.name=="manual_approval") | .id'
+
+# Trigger it:
+curl --request POST --header "PRIVATE-TOKEN: <your-token>" \
+  "https://gitlab.com/<group>/<project>/api/v4/jobs/<job_id>/play"
+```
+
+---
+
+### Step 6 — Monitor `deploy_prod`
+
+Identical to the dev rollout but targeting `video-extract-prod`. ACA rolls out the new revision with zero-downtime traffic shifting.
+
+**Watch the rollout:**
+
+```bash
+watch -n 5 'az containerapp revision list \
+  --name api-gateway \
+  --resource-group video-extract-prod \
+  --output table'
+```
+
+**Monitor Application Insights for errors** immediately after rollout:
+
+```bash
+az monitor app-insights query \
+  --app ve-prod-appinsights \
+  --resource-group video-extract-prod \
+  --analytics-query "exceptions | where timestamp > ago(15m) | summarize count() by type | order by count_ desc" \
+  --offset 15M \
+  --output table
+```
+
+Wait 5–10 minutes after the rollout completes and confirm error rate has not increased before considering the release done.
+
+---
+
+### Step 7 — Post-deployment verification (prod)
+
+Run the smoke test script against the live production environment:
+
+```bash
+scripts/smoke-test.sh prod
+```
+
+Wait 5–10 minutes after the rollout completes and confirm the script exits 0 before considering the release done.
+
+**If production is degraded after deployment**, see "Rolling Back a Production Deployment" in the SDLC section above.
+
+---
+
+### Quick-reference: full release command sequence
+
+For a complete, healthy release from merge to prod verification:
+
+```bash
+# After merge to main — wait for pipeline stages 1–7 to complete, then:
+
+# 1. Verify push_to_acr (images tagged :latest in ACR)
+az acr repository show-tags --name videoextractdevacr --repository api-gateway --orderby time_desc --output table
+
+# 2. Wait for dev rollout
+az containerapp revision list --name api-gateway --resource-group video-extract-dev --output table
+
+# 3. Smoke-test dev (health, tool catalogue, service bus dead-letters, replica state)
+scripts/smoke-test.sh dev
+
+# 4. Approve production deployment (GitLab UI or glab CLI)
+glab ci run manual_approval
+
+# 5. Wait for prod rollout
+az containerapp revision list --name api-gateway --resource-group video-extract-prod --output table
+
+# 6. Smoke-test prod
+scripts/smoke-test.sh prod
 ```
