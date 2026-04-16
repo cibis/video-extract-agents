@@ -432,7 +432,7 @@ push_to_acr:
         docker push "$ACR_REGISTRY/$svc:latest"
       done
   only:
-    - main
+    - master
 
 # ──────────────────────────────────────────────────────────────────────────────
 # DEPLOY DEV
@@ -482,7 +482,7 @@ deploy_dev:
   environment:
     name: dev
   only:
-    - main
+    - master
 
 # ──────────────────────────────────────────────────────────────────────────────
 # MANUAL APPROVAL GATE
@@ -496,7 +496,7 @@ manual_approval:
   when: manual
   allow_failure: false
   only:
-    - main
+    - master
 
 # ──────────────────────────────────────────────────────────────────────────────
 # DEPLOY PROD
@@ -548,4 +548,4 @@ deploy_prod:
   needs:
     - manual_approval
   only:
-    - main
+    - master
