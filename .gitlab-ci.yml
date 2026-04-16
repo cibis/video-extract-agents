@@ -222,6 +222,10 @@ build:librechat:
 aca_test_env_create:
   stage: aca_test_env_create
   <<: *terraform-setup
+  rules:
+    - if: '$SKIP_TESTS == "true"'
+      when: never
+    - when: on_success
   script:
     - terraform apply -auto-approve
     - terraform output -json > tf-outputs.json
@@ -234,6 +238,10 @@ deploy_test_services:
   stage: deploy_test_services
   image: mcr.microsoft.com/azure-cli:latest
   <<: *azure-login
+  rules:
+    - if: '$SKIP_TESTS == "true"'
+      when: never
+    - when: on_success
   script:
     - |
       SERVICES=(api-gateway agent-orchestrator preprocessing-worker notification-worker
@@ -279,6 +287,10 @@ deploy_test_services:
 e2e_tests:
   stage: e2e_tests
   image: python:3.11-slim
+  rules:
+    - if: '$SKIP_TESTS == "true"'
+      when: never
+    - when: on_success
   script:
     - apt-get update -qq && apt-get install -y --no-install-recommends ffmpeg curl
     - pip install pytest httpx asyncpg
@@ -313,7 +325,10 @@ collect_e2e_logs:
   stage: collect_e2e_logs
   image: mcr.microsoft.com/azure-cli:latest
   <<: *azure-login
-  when: always
+  rules:
+    - if: '$SKIP_TESTS == "true"'
+      when: never
+    - when: always
   needs:
     - job: e2e_tests
       artifacts: true
@@ -407,9 +422,12 @@ collect_e2e_logs:
 aca_test_env_destroy:
   stage: aca_test_env_destroy
   <<: *terraform-setup
+  rules:
+    - if: '$SKIP_TESTS == "true"'
+      when: never
+    - when: always  # Always runs — cleans up even if previous stages fail
   script:
     - terraform destroy -auto-approve
-  when: always  # Always runs — cleans up even if previous stages fail
 
 # ──────────────────────────────────────────────────────────────────────────────
 # PUSH PRODUCTION IMAGES (tag with git ref + latest)
