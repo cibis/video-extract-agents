@@ -49,6 +49,67 @@ def strip_code_fences(text: str) -> str:
     return text
 
 
+def convert_json_wrapped_react(text: str) -> str:
+    """Convert a JSON-object-wrapped ReAct response to plain-text ReAct format.
+
+    Some weaker models (e.g. Amazon Nova Lite on Bedrock) occasionally wrap
+    their Thought/Action/Action Input or Thought/Final Answer response inside a
+    JSON object instead of emitting the plain-text format CrewAI expects:
+
+      # What Nova Lite emits (JSON-wrapped):
+      {"Thought": "...", "Action": "extract_frames", "Action Input": {...}}
+
+      # What CrewAI expects (plain text):
+      Thought: ...
+      Action: extract_frames
+      Action Input: {...}
+
+    A "Final Answer" variant is also handled:
+      {"Thought": "...", "Final Answer": {...}}  →  Thought: ...\\nFinal Answer: {...}
+
+    Safety: only triggered when the *entire* response is a single valid JSON
+    object AND the object contains an "Action" or "Final Answer" key.  These
+    keys never appear in legitimate agent outputs (plan JSON, analysis-result
+    JSON, processing-output JSON), so there is no risk of false positives.
+    """
+    stripped = text.strip()
+    if not stripped.startswith("{"):
+        return text
+    try:
+        obj = json.loads(stripped)
+    except json.JSONDecodeError:
+        return text
+    if not isinstance(obj, dict):
+        return text
+
+    has_action = "Action" in obj
+    has_final_answer = "Final Answer" in obj
+    if not has_action and not has_final_answer:
+        return text
+
+    lines: list[str] = []
+    thought = obj.get("Thought", "")
+    if thought:
+        lines.append(f"Thought: {thought}")
+
+    if has_action:
+        action = obj.get("Action", "")
+        action_input = obj.get("Action Input", {})
+        action_input_str = (
+            json.dumps(action_input) if isinstance(action_input, dict) else str(action_input)
+        )
+        lines.append(f"Action: {action}")
+        lines.append(f"Action Input: {action_input_str}")
+    else:
+        final_answer = obj.get("Final Answer", "")
+        final_answer_str = (
+            json.dumps(final_answer) if isinstance(final_answer, (dict, list)) else str(final_answer)
+        )
+        lines.append(f"Final Answer: {final_answer_str}")
+
+    return "\n".join(lines)
+
+
 def extract_json_string(text: str) -> str:
     """
     Extracts the most likely valid JSON substring from LLM output.

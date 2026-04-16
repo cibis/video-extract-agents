@@ -58,9 +58,9 @@ def test_analyze_scene_pipeline(request, frontier_model_available, tmp_path, api
         http_client, api_gateway_url, auth_headers,
         video_id=video_id, session_id=session_id,
         prompt=(
-            "Extract the segments containing vertical color bars. "
-            "Use analyze_scene with the question 'Does this frame contain vertical color bars?' "
-            "to identify matching frames. Do not use any detect_* tools."
+            "This is a synthetic test card video. Find all segments where vertical color bars "
+            "are arranged across the frame and compile them into a clip. "
+            "Ask each frame: 'Does this frame contain vertical color bars?'"
         ),
         test_name=request.node.nodeid,
     )

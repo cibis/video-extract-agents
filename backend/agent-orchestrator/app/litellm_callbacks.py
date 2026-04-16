@@ -31,7 +31,7 @@ from contextlib import contextmanager
 from typing import Generator
 
 from app.config import settings
-from app.utils import strip_code_fences, convert_function_calls_to_react
+from app.utils import strip_code_fences, convert_function_calls_to_react, convert_json_wrapped_react
 
 logger = logging.getLogger(__name__)
 
@@ -182,7 +182,7 @@ def guard_tool_usage_errors(limit: int) -> Generator[None, None, None]:
 def _strip_response_fences(result) -> None:
     """Normalise LLM response content to CrewAI ReAct format in-place.
 
-    Two transformations are applied before CrewAI's parser sees the content:
+    Three transformations are applied before CrewAI's parser sees the content:
 
     1. Claude Haiku 4.5 overrides the ReAct text instructions and emits tool
        calls as <function_calls>[{"tool_name":...,"arguments":...}]
@@ -192,6 +192,13 @@ def _strip_response_fences(result) -> None:
     2. Weaker models (e.g. Amazon Nova Lite) wrap their ReAct output in
        ```...``` code blocks.  strip_code_fences() removes the delimiters so
        ast.literal_eval() can parse the Action Input JSON cleanly.
+
+    3. Amazon Nova Lite occasionally wraps its entire Thought/Action/Action
+       Input (or Thought/Final Answer) response as a JSON object instead of
+       emitting plain text.  convert_json_wrapped_react() detects this by
+       looking for an "Action" or "Final Answer" key in the top-level object
+       and rewrites it to the plain-text ReAct format.  Applied after fence
+       stripping so that JSON-inside-a-code-block is also covered.
     """
     if result is not None and getattr(result, "choices", None):
         content = result.choices[0].message.content or ""
@@ -199,6 +206,8 @@ def _strip_response_fences(result) -> None:
             content = convert_function_calls_to_react(content)
         if "```" in content:
             content = strip_code_fences(content)
+        if content.strip().startswith("{"):
+            content = convert_json_wrapped_react(content)
         result.choices[0].message.content = content
 
 
