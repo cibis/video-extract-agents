@@ -755,7 +755,7 @@ resource "azurerm_container_app_job" "db_init" {
       image   = "${var.acr_login_server}/agent-orchestrator:${var.image_tag}"
       cpu     = 0.25
       memory  = "0.5Gi"
-      command = ["/bin/sh", "-c", "for i in 1 2 3 4 5; do python /app/init_db.py && exit 0 || sleep 10; done; exit 1"]
+      command = ["/bin/sh", "-c", "for i in $(seq 1 24); do echo \"attempt $i/24\"; python /app/init_db.py && exit 0; sleep 10; done; exit 1"]
 
       env {
         name  = "DATABASE_URL"
