@@ -17,16 +17,53 @@ export class AuthService {
     }
   }
 
-  login(): void {
+  async login(): Promise<void> {
     const { clientId, authority, redirectUri } = environment.msalConfig;
+    const verifier = this.generateCodeVerifier();
+    sessionStorage.setItem('pkce_code_verifier', verifier);
+    const challenge = await this.generateCodeChallenge(verifier);
     const params = new URLSearchParams({
       client_id: clientId,
       response_type: 'code',
       redirect_uri: redirectUri,
       scope: 'openid profile email',
       response_mode: 'fragment',
+      code_challenge: challenge,
+      code_challenge_method: 'S256',
     });
     window.location.href = `${authority}/oauth2/v2.0/authorize?${params}`;
+  }
+
+  async handleCallback(): Promise<void> {
+    const hash = window.location.hash.substring(1);
+    const params = new URLSearchParams(hash);
+    const code = params.get('code');
+    if (!code) return;
+
+    const verifier = sessionStorage.getItem('pkce_code_verifier');
+    if (!verifier) return;
+
+    const { clientId, authority, redirectUri } = environment.msalConfig;
+    const body = new URLSearchParams({
+      grant_type: 'authorization_code',
+      client_id: clientId,
+      code,
+      redirect_uri: redirectUri,
+      code_verifier: verifier,
+      scope: 'openid profile email',
+    });
+
+    const response = await fetch(`${authority}/oauth2/v2.0/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body.toString(),
+    });
+    const tokens = await response.json();
+    if (tokens.access_token) {
+      this.setToken(tokens.access_token);
+      sessionStorage.removeItem('pkce_code_verifier');
+      window.history.replaceState(null, '', window.location.pathname);
+    }
   }
 
   logout(): void {
@@ -44,5 +81,19 @@ export class AuthService {
 
   getToken(): string | null {
     return this._token();
+  }
+
+  private generateCodeVerifier(): string {
+    const array = new Uint8Array(96);
+    crypto.getRandomValues(array);
+    return btoa(String.fromCharCode(...array))
+      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+  }
+
+  private async generateCodeChallenge(verifier: string): Promise<string> {
+    const data = new TextEncoder().encode(verifier);
+    const digest = await crypto.subtle.digest('SHA-256', data);
+    return btoa(String.fromCharCode(...new Uint8Array(digest)))
+      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
   }
 }
