@@ -121,12 +121,6 @@ destroy_env() {
     echo ""
   fi
 
-  read -r -p "  Type 'destroy-$env' to confirm: " confirm
-  if [ "$confirm" != "destroy-$env" ]; then
-    echo "  Aborted."
-    exit 1
-  fi
-
   echo ""
   echo "  Initialising Terraform..."
   cd "$tf_dir"

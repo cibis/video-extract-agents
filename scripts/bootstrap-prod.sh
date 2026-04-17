@@ -66,4 +66,4 @@ done
 
 echo ""
 echo "Phase 2: Full terraform apply..."
-tf terraform apply
+tf terraform apply -auto-approve

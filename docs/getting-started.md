@@ -12,7 +12,7 @@ This guide walks through the full setup of the platform on a **Windows machine w
 4. [GitHub mirror setup](#4-github-mirror-setup)
 5. [Azure — one-time account setup](#5-azure--one-time-account-setup)
 6. [Azure — Entra External ID (auth)](#6-azure--entra-external-id-auth)
-7. [Azure — dev environment (Terraform)](#7-azure--dev-environment-terraform)
+7. [Azure — dev and prod environments (Terraform)](#7-azure--dev-and-prod-environments-terraform)
 8. [Local development bootstrap](#8-local-development-bootstrap)
 9. [Running unit tests](#9-running-unit-tests)
 10. [Running integration tests locally](#10-running-integration-tests-locally)
