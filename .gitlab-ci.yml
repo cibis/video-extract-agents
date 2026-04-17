@@ -468,6 +468,14 @@ deploy_dev:
           --image "$ACR_REGISTRY/$svc:$IMAGE_TAG"
       done
     - |
+      az containerapp update \
+        --name angular-shell \
+        --resource-group "video-extract-dev" \
+        --set-env-vars \
+          AZURE_ENTRA_TENANT_ID="$TF_VAR_entra_tenant_id" \
+          AZURE_ENTRA_CLIENT_ID="$TF_VAR_entra_client_id" \
+          APP_BASE_URL="$TF_VAR_app_base_url"
+    - |
       echo "Running db-init to apply schema migrations..."
       EXEC_NAME=$(az containerapp job start \
         --name db-init \
