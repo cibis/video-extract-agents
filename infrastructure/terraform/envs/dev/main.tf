@@ -108,6 +108,7 @@ module "aca" {
   entra_client_id               = var.entra_client_id
   min_replicas                  = 0
   max_replicas                  = 5
+  postgres_persistent_volume    = false
   create_db_init_job            = true
   tags                          = local.tags
 }
