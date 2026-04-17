@@ -204,11 +204,12 @@ The ACR is provisioned by Terraform (`modules/acr/`) when you run `terraform app
 Both environments are provisioned using one-time bootstrap scripts that handle
 the two-phase Terraform apply (ACR must exist before container apps can be created).
 
-All credentials live in a single gitignored file — fill it in once, then run either script:
+All credentials live in a single gitignored file — copy the committed template, fill it in once, then run either script:
 
 ```bash
-# Edit scripts/credentials.sh and fill in your values (file is gitignored)
-# Then run:
+# Copy the template (committed, no real secrets) and fill in your values
+cp scripts/credentials.sh.example scripts/credentials.sh
+# Edit scripts/credentials.sh — the filled-in copy is gitignored
 
 bash scripts/bootstrap-dev.sh    # provisions video-extract-dev
 bash scripts/bootstrap-prod.sh   # provisions video-extract-prod

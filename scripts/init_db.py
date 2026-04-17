@@ -297,7 +297,7 @@ ALTER TABLE sessions
 async def main(drop: bool) -> None:
     url = DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
     print(f"Connecting to: {url}")
-    conn = await asyncpg.connect(url)
+    conn = await asyncpg.connect(url, ssl=False, timeout=10)
     try:
         if drop:
             print("Dropping all tables...")
