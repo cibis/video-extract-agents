@@ -1,5 +1,17 @@
 # Local Container Architecture Report
 
+## Table of Contents
+
+- [1. Current Stack — All Containers](#1-current-stack-all-containers)
+  - [Infrastructure Layer](#infrastructure-layer)
+  - [Init Layer (one-shot, run before backend services start)](#init-layer-one-shot-run-before-backend-services-start)
+  - [Backend Services Layer](#backend-services-layer)
+  - [MCP Tool Servers Layer](#mcp-tool-servers-layer)
+  - [Frontend Layer](#frontend-layer)
+  - [Container Summary Table](#container-summary-table)
+
+---
+
 ## 1. Current Stack — All Containers
 
 The full local stack is defined in `infrastructure/docker-compose/docker-compose.yml` and runs 15 containers (13 long-running services plus 2 one-shot init containers) grouped into four layers, plus the init layer.

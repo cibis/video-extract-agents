@@ -4,6 +4,37 @@ This document explains how the platform is deployed and operated in the Azure pr
 
 ---
 
+## Table of Contents
+
+- [1. Production Resource Group](#1-production-resource-group)
+- [2. Azure Services and Their Roles](#2-azure-services-and-their-roles)
+  - [2.1 Azure Container Registry (ACR)](#21-azure-container-registry-acr)
+  - [2.2 Azure Container Apps (ACA) + Log Analytics](#22-azure-container-apps-aca-log-analytics)
+  - [2.3 Azure Blob Storage](#23-azure-blob-storage)
+  - [2.4 Azure Service Bus](#24-azure-service-bus)
+  - [2.5 Azure Front Door](#25-azure-front-door)
+  - [2.6 Azure PostgreSQL (container-based)](#26-azure-postgresql-container-based)
+  - [2.7 Azure Key Vault](#27-azure-key-vault)
+  - [2.8 Azure Communication Services (ACS)](#28-azure-communication-services-acs)
+  - [2.9 Azure Entra External ID](#29-azure-entra-external-id)
+  - [2.10 Azure Application Insights](#210-azure-application-insights)
+- [3. How the Services Connect](#3-how-the-services-connect)
+  - [3.1 Network topology](#31-network-topology)
+  - [3.2 Data flow — upload](#32-data-flow-upload)
+  - [3.3 Data flow — job execution](#33-data-flow-job-execution)
+  - [3.4 Data flow — output delivery](#34-data-flow-output-delivery)
+- [4. Scalability](#4-scalability)
+  - [4.1 HTTP concurrency scaling (KEDA HTTP add-on)](#41-http-concurrency-scaling-keda-http-add-on)
+  - [4.2 KEDA Service Bus queue-depth scaling](#42-keda-service-bus-queue-depth-scaling)
+  - [4.3 Why this architecture scales](#43-why-this-architecture-scales)
+  - [4.4 Limits and known constraints](#44-limits-and-known-constraints)
+- [5. How New Versions Reach Production](#5-how-new-versions-reach-production)
+- [6. Secret Management in Production](#6-secret-management-in-production)
+- [7. Observability in Production](#7-observability-in-production)
+- [8. Production vs Dev vs Test Environment Differences](#8-production-vs-dev-vs-test-environment-differences)
+
+---
+
 ## 1. Production Resource Group
 
 All production resources live in a single Azure Resource Group:

@@ -6,6 +6,29 @@ This document covers every credential the platform needs, with step-by-step inst
 
 ---
 
+## Table of Contents
+
+- [Prerequisites](#prerequisites)
+- [Overview of what needs to be created](#overview-of-what-needs-to-be-created)
+- [1. Terraform Service Principal](#1-terraform-service-principal)
+- [2. Terraform State Storage](#2-terraform-state-storage)
+- [3. Azure Blob Storage Account](#3-azure-blob-storage-account)
+- [4. Azure Service Bus Namespace & Queues](#4-azure-service-bus-namespace-queues)
+- [5. PostgreSQL (ACA container)](#5-postgresql-aca-container)
+- [6. Azure Entra External ID — App Registration](#6-azure-entra-external-id-app-registration)
+- [7. Azure Container Registry](#7-azure-container-registry)
+- [8. Azure Front Door](#8-azure-front-door)
+- [9. Azure Communication Services](#9-azure-communication-services)
+- [10. Application Insights](#10-application-insights)
+- [11. Anthropic API Key](#11-anthropic-api-key)
+- [12. Optional: OpenAI API Key](#12-optional-openai-api-key)
+- [13. Optional: AWS Bedrock Credentials](#13-optional-aws-bedrock-credentials)
+- [Full Local Dev Setup](#full-local-dev-setup)
+- [Full CI/CD Setup (GitLab)](#full-cicd-setup-gitlab)
+- [Security Rules](#security-rules)
+
+---
+
 ## Prerequisites
 
 ### Install the Azure CLI

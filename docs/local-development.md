@@ -4,6 +4,51 @@ This guide covers day-to-day local development: starting the stack, running indi
 
 ---
 
+## Table of Contents
+
+- [Prerequisites](#prerequisites)
+- [First-time env setup](#first-time-env-setup)
+- [Starting the full local stack](#starting-the-full-local-stack)
+  - [Service endpoints](#service-endpoints)
+  - [Local dev flags active in Docker Compose](#local-dev-flags-active-in-docker-compose)
+- [Initialising the database (first run only)](#initialising-the-database-first-run-only)
+- [Creating Service Bus queues (first run only)](#creating-service-bus-queues-first-run-only)
+- [Verifying the stack is healthy](#verifying-the-stack-is-healthy)
+- [Stopping the stack](#stopping-the-stack)
+- [Working with individual services](#working-with-individual-services)
+  - [Rebuild and restart a single service](#rebuild-and-restart-a-single-service)
+  - [View logs](#view-logs)
+  - [Open a shell in a running container](#open-a-shell-in-a-running-container)
+- [Running unit tests](#running-unit-tests)
+  - [API Gateway (Node.js)](#api-gateway-nodejs)
+  - [Agent Orchestrator (Python)](#agent-orchestrator-python)
+  - [Preprocessing Worker (Python)](#preprocessing-worker-python)
+  - [Notification Worker (Python)](#notification-worker-python)
+  - [MCP Server Analysis (Python)](#mcp-server-analysis-python)
+  - [MCP Server Processing (Python)](#mcp-server-processing-python)
+  - [Run all Python unit tests from repo root](#run-all-python-unit-tests-from-repo-root)
+- [Running integration tests](#running-integration-tests)
+  - [Using the convenience script](#using-the-convenience-script)
+  - [Manually](#manually)
+- [Running a service outside Docker (hot reload)](#running-a-service-outside-docker-hot-reload)
+  - [API Gateway](#api-gateway)
+  - [Python services (agent-orchestrator, workers, MCP servers)](#python-services-agent-orchestrator-workers-mcp-servers)
+- [Linting](#linting)
+  - [API Gateway](#api-gateway-1)
+  - [Python services](#python-services)
+- [Database access](#database-access)
+- [Azurite (Blob Storage)](#azurite-blob-storage)
+- [Common troubleshooting](#common-troubleshooting)
+  - [Port already in use](#port-already-in-use)
+  - [PostgreSQL "password authentication failed"](#postgresql-password-authentication-failed)
+  - [Service Bus emulator slow to start](#service-bus-emulator-slow-to-start)
+  - [Agent orchestrator fails with missing ANTHROPIC\_API\_KEY](#agent-orchestrator-fails-with-missing-anthropic_api_key)
+  - [`mcp-server-analysis` is slow on the first `detect_objects` call](#mcp-server-analysis-is-slow-on-the-first-detect_objects-call)
+  - [`poetry install` fails with SSL errors (corporate proxy)](#poetry-install-fails-with-ssl-errors-corporate-proxy)
+- [Quick reference](#quick-reference)
+
+---
+
 ## Prerequisites
 
 - Docker Desktop running (WSL 2 engine)

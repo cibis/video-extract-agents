@@ -4,6 +4,43 @@ This document explains how each AI container works, where it sits in the job pro
 
 ---
 
+## Table of Contents
+
+- [1. Job Processing Sequence at a Glance](#1-job-processing-sequence-at-a-glance)
+- [2. Preprocessing Worker — Keyframe Extraction](#2-preprocessing-worker-keyframe-extraction)
+  - [Position in sequence](#position-in-sequence)
+  - [What it receives](#what-it-receives)
+  - [What it does](#what-it-does)
+  - [What it produces](#what-it-produces)
+- [3. Agent Orchestrator](#3-agent-orchestrator)
+  - [Position in sequence](#position-in-sequence-1)
+  - [What it receives](#what-it-receives-1)
+  - [Startup — what it loads before the crew runs](#startup-what-it-loads-before-the-crew-runs)
+  - [3a. Planner Agent](#3a-planner-agent)
+  - [3b. Analysis Agent](#3b-analysis-agent)
+  - [3c. Processing Agent](#3c-processing-agent)
+  - [What the orchestrator does after the crew finishes](#what-the-orchestrator-does-after-the-crew-finishes)
+- [4. MCP Server — Analysis](#4-mcp-server-analysis)
+  - [SSE response format (all tools)](#sse-response-format-all-tools)
+  - [Tool: `extract_frames`](#tool-extract_frames)
+  - [Tool: `detect_motion`](#tool-detect_motion)
+  - [Tool: `detect_motion_sports`](#tool-detect_motion_sports)
+  - [Tool: `detect_objects`](#tool-detect_objects)
+  - [Tool: `read_asset`](#tool-read_asset)
+  - [Tool: `analyze_scene` *(frontier)*](#tool-analyze_scene-frontier-calls-anthropic-api)
+  - [Tool: `detect_objects_vision` *(frontier)*](#tool-detect_objects_vision-frontier-calls-anthropic-api)
+  - [Tool: `transcribe_audio`](#tool-transcribe_audio)
+- [5. MCP Server — Processing](#5-mcp-server-processing)
+  - [Tool: `split_video`](#tool-split_video)
+  - [Tool: `extract_clip`](#tool-extract_clip)
+  - [Tool: `merge_clips`](#tool-merge_clips)
+  - [Tool: `transform_video`](#tool-transform_video)
+  - [Tool: `write_asset`](#tool-write_asset)
+- [6. Data Flow Summary](#6-data-flow-summary)
+- [7. Model Usage by Container](#7-model-usage-by-container)
+
+---
+
 ## 1. Job Processing Sequence at a Glance
 
 ```

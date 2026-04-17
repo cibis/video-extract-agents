@@ -1,5 +1,36 @@
 # Architecture — Prompt-Driven Video Extraction Platform
 
+## Table of Contents
+
+- [1. System Overview](#1-system-overview)
+- [2. Tech Stack](#2-tech-stack)
+- [3. Project Structure](#3-project-structure)
+- [4. Data Flow](#4-data-flow)
+  - [Upload flow](#upload-flow)
+  - [Job execution flow](#job-execution-flow)
+  - [Authentication flow](#authentication-flow)
+- [5. Core Components](#5-core-components)
+- [6. Key Patterns](#6-key-patterns)
+- [7. External Integrations](#7-external-integrations)
+- [8. Observability](#8-observability)
+- [9. Service Ports (local / Docker Compose)](#9-service-ports-local-docker-compose)
+- [10. Local Development](#10-local-development)
+  - [Env flags](#env-flags)
+  - [Running E2E tests locally](#running-e2e-tests-locally)
+  - [Files requiring changes](#files-requiring-changes)
+- [11. External Agent Support](#11-external-agent-support)
+  - [New directory: `external-agents/`](#new-directory-external-agents)
+  - [MCP Bridge (port 8300)](#mcp-bridge-port-8300)
+  - [`ingest_video` tool](#ingest_video-tool-added-to-mcp-server-analysis)
+  - [File-attach flow per agent](#file-attach-flow-per-agent)
+  - [Docker Compose integration](#docker-compose-integration)
+- [12. System Architecture Diagram](#12-system-architecture-diagram)
+- [12. Deployment Diagrams](#12-deployment-diagrams)
+  - [12.1 Local — Docker Compose](#121-local-docker-compose)
+  - [12.2 Azure — Container Apps (dev / prod)](#122-azure-container-apps-dev-prod)
+
+---
+
 ## 1. System Overview
 
 Users upload video files and describe what they want extracted in plain English (e.g., "compile all kitesurfing jumps into a highlight reel"). The platform uses AI agents to interpret the prompt, orchestrate a sequence of MCP tool calls for video analysis and processing, and deliver a compiled output video via email and a signed CDN URL.

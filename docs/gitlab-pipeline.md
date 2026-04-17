@@ -4,6 +4,53 @@ This document explains the CI/CD pipeline in detail — every stage, every job, 
 
 ---
 
+## Table of Contents
+
+- [Pipeline at a Glance](#pipeline-at-a-glance)
+- [Global Variables](#global-variables)
+- [Reusable Templates (YAML Anchors)](#reusable-templates-yaml-anchors)
+  - [`&docker-login`](#docker-login)
+  - [`&azure-login`](#azure-login)
+  - [`&terraform-setup`](#terraform-setup)
+- [Stage-by-Stage Breakdown](#stage-by-stage-breakdown)
+  - [Stage 1 — `lint`](#stage-1-lint)
+  - [Stage 2 — `build_images`](#stage-2-build_images)
+  - [Stage 3 — `aca_test_env_create`](#stage-3-aca_test_env_create)
+  - [Stage 4 — `deploy_test_services`](#stage-4-deploy_test_services)
+  - [Stage 5 — `e2e_tests`](#stage-5-e2e_tests)
+  - [Stage 6 — `collect_e2e_logs`](#stage-6-collect_e2e_logs)
+  - [How to download the logs after a pipeline run](#how-to-download-the-logs-after-a-pipeline-run)
+  - [Using the logs to diagnose failures](#using-the-logs-to-diagnose-failures)
+  - [Stage 7 — `aca_test_env_destroy`](#stage-7-aca_test_env_destroy)
+  - [Stage 8 — `push_to_acr`](#stage-8-push_to_acr)
+  - [Stage 9 — `deploy_dev`](#stage-9-deploy_dev)
+  - [Stage 10 — `manual_approval`](#stage-10-manual_approval)
+  - [Stage 11 — `deploy_prod`](#stage-11-deploy_prod)
+- [Azure Environments — Lifecycle Summary](#azure-environments-lifecycle-summary)
+- [GitLab CI Variables Required](#gitlab-ci-variables-required)
+- [SDLC Workflow](#sdlc-workflow)
+  - [Branch Strategy](#branch-strategy)
+  - [Day-to-Day Development Flow](#day-to-day-development-flow)
+  - [Merge Requests](#merge-requests)
+  - [Environments in GitLab](#environments-in-gitlab)
+  - [Rolling Back a Production Deployment](#rolling-back-a-production-deployment)
+  - [Infrastructure Changes (Terraform)](#infrastructure-changes-terraform)
+  - [Adding a New Service](#adding-a-new-service)
+  - [Handling Secrets Rotation](#handling-secrets-rotation)
+  - [Pipeline Failure Triage](#pipeline-failure-triage)
+- [Completing a Release — Step-by-Step](#completing-a-release-step-by-step)
+  - [Prerequisites (one-time setup)](#prerequisites-one-time-setup)
+  - [Step 1 — Merge to `main`](#step-1-merge-to-main)
+  - [Step 2 — Verify `push_to_acr`](#step-2-verify-push_to_acr)
+  - [Step 3 — Monitor `deploy_dev`](#step-3-monitor-deploy_dev)
+  - [Step 4 — Smoke test dev](#step-4-smoke-test-dev)
+  - [Step 5 — Trigger `manual_approval`](#step-5-trigger-manual_approval)
+  - [Step 6 — Monitor `deploy_prod`](#step-6-monitor-deploy_prod)
+  - [Step 7 — Post-deployment verification (prod)](#step-7-post-deployment-verification-prod)
+  - [Quick-reference: full release command sequence](#quick-reference-full-release-command-sequence)
+
+---
+
 ## Pipeline at a Glance
 
 ```

@@ -1,5 +1,28 @@
 # End-to-End Pipeline Tests
 
+## Table of Contents
+
+- [How to Run](#how-to-run)
+  - [The correct way — all e2e tests on this machine](#the-correct-way-all-e2e-tests-on-this-machine)
+  - [Run only local-model tests (no API key required)](#run-only-local-model-tests-no-api-key-required)
+  - [Run frontier tests (requires model credentials)](#run-frontier-tests-requires-model-credentials)
+- [Failure Threshold (CI)](#failure-threshold-ci)
+- [Architecture of the Test Suite](#architecture-of-the-test-suite)
+  - [No binary files committed](#no-binary-files-committed)
+  - [Shared test flow](#shared-test-flow)
+- [Test File Reference](#test-file-reference)
+  - [`test_detect_motion.py`](#test_detect_motionpy)
+  - [`test_detect_motion_sports.py`](#test_detect_motion_sportspy)
+  - [`test_detect_objects.py`](#test_detect_objectspy)
+  - [`test_detect_objects_vision.py`](#test_detect_objects_visionpy)
+  - [`test_analyze_scene.py`](#test_analyze_scenepy)
+  - [`test_transcribe_audio.py`](#test_transcribe_audiopy)
+  - [`test_estimate_height_above_surface.py`](#test_estimate_height_above_surfacepy)
+  - [`test_followup_job.py`](#test_followup_jobpy)
+- [Troubleshooting](#troubleshooting)
+
+---
+
 ## How to Run
 
 ### The correct way — all e2e tests on this machine

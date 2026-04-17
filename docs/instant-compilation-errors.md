@@ -4,6 +4,28 @@ This guide explains how to get immediate feedback on type and syntax errors in e
 
 ---
 
+## Table of Contents
+
+- [1. Node.js API Gateway (TypeScript)](#1-nodejs-api-gateway-typescript)
+  - [Watch mode with ts-node-dev](#watch-mode-with-ts-node-dev)
+  - [Type-check only (no emit)](#type-check-only-no-emit)
+  - [VS Code — Problems panel](#vs-code-problems-panel)
+- [2. Angular Shell (TypeScript)](#2-angular-shell-typescript)
+  - [ng serve — live compilation](#ng-serve-live-compilation)
+  - [Type-check only](#type-check-only)
+  - [VS Code](#vs-code)
+- [3. Python Services (FastAPI + Uvicorn)](#3-python-services-fastapi-uvicorn)
+  - [a) Syntax and import errors — caught at startup](#a-syntax-and-import-errors-caught-at-startup)
+  - [b) Type errors — caught by Pyright / mypy](#b-type-errors-caught-by-pyright-mypy)
+- [4. Recommended Terminal Layout](#4-recommended-terminal-layout)
+- [5. Angular Shell — LibreChat iframe not showing](#5-angular-shell-librechat-iframe-not-showing)
+  - [a) LibreChat is not running](#a-librechat-is-not-running)
+  - [b) Angular sanitizes the iframe `[src]` binding](#b-angular-sanitizes-the-iframe-src-binding)
+- [6. ESLint (TypeScript — optional real-time linting)](#6-eslint-typescript-optional-real-time-linting)
+- [6. Summary](#6-summary)
+
+---
+
 ## 1. Node.js API Gateway (TypeScript)
 
 **Location:** `backend/api-gateway/`
