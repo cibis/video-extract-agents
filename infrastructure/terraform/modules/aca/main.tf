@@ -640,6 +640,18 @@ resource "azurerm_container_app" "angular_shell" {
         name  = "LIBRECHAT_URL"
         value = "http://librechat"
       }
+      env {
+        name  = "AZURE_ENTRA_TENANT_ID"
+        value = var.entra_tenant_id
+      }
+      env {
+        name  = "AZURE_ENTRA_CLIENT_ID"
+        value = var.entra_client_id
+      }
+      env {
+        name  = "APP_BASE_URL"
+        value = var.app_base_url
+      }
     }
 
     http_scale_rule {

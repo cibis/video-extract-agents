@@ -73,3 +73,8 @@ variable "entra_client_id" {
   type    = string
   default = ""
 }
+
+variable "app_base_url" {
+  type    = string
+  default = ""
+}

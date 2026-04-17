@@ -109,6 +109,7 @@ module "aca" {
   front_door_url                = module.frontdoor.endpoint_hostname
   entra_tenant_id               = var.entra_tenant_id
   entra_client_id               = var.entra_client_id
+  app_base_url                  = var.app_base_url
   min_replicas                  = 1
   max_replicas                  = 20
   postgres_persistent_volume    = false

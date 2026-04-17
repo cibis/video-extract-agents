@@ -180,6 +180,12 @@ variable "create_db_init_job" {
   description = "Create an ACA Container App Job that runs init_db.py against the internal PostgreSQL on demand. Enable in ephemeral test environments where the DB starts empty."
 }
 
+variable "app_base_url" {
+  type        = string
+  default     = ""
+  description = "Public base URL of the Angular shell (used as MSAL redirectUri)"
+}
+
 variable "tags" {
   type    = map(string)
   default = {}
