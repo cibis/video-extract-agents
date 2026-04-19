@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Create all database tables for the Video Extract Platform.
+Create all database tables for the Video Extract Project.
 Usage:
   python scripts/init_db.py
   python scripts/init_db.py --drop   # drop and recreate all tables
