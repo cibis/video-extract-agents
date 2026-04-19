@@ -1,4 +1,4 @@
-# Terraform Infrastructure — Detailed Reference
+# Terraform Infrastructure — Reference
 
 This document explains the Terraform layout, every module, every environment, and how the pieces connect.
 
