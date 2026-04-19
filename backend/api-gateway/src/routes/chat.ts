@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
 import { config } from '../config';
-import { getLatestSessionForUser, createJob, updateJobPrompt, findActiveJobForSession, findDraftJobWithoutSession } from '../services/dbService';
+import { getLatestSessionForUser, createJob, updateJobPrompt, findActiveJobForSession, findDraftJobWithoutSession, findLatestDraftJobWithSession } from '../services/dbService';
 import { generateSignedDownloadUrl } from '../services/blobService';
 
 export const chatRouter = Router();
@@ -80,7 +80,16 @@ chatRouter.post('/', async (req, res) => {
     let sessionId = req.headers['x-session-id'] ? String(req.headers['x-session-id']) : null;
     if (!sessionId) {
       const latestSession = await getLatestSessionForUser(req.user!.id);
-      if (latestSession) sessionId = latestSession.id;
+      if (latestSession) {
+        sessionId = latestSession.id;
+      } else {
+        // Fallback: no session owned by this user yet (e.g. after switching from
+        // LOCAL_DEV_SKIP_AUTH=true to real Entra auth, or on first sign-in before
+        // uploading). Check whether the pre-created draft already references a session
+        // so the orchestrator gets the correct video context.
+        const draftWithSession = await findLatestDraftJobWithSession(req.user!.id);
+        if (draftWithSession?.session_id) sessionId = draftWithSession.session_id;
+      }
     }
     if (sessionId) forwardHeaders['X-Session-Id'] = sessionId;
 

@@ -196,7 +196,7 @@ export class ApiService {
     if (entraToken) {
       const claims = decodeJwtPayload(entraToken);
       email = claims['email'] ?? claims['preferred_username'] ?? '';
-      sub = claims['sub'] ?? claims['oid'] ?? email;
+      sub = claims['oid'] ?? claims['sub'] ?? email;
     } else {
       // Local dev: no real Entra session.
       // Must be a valid email format — LibreChat rejects single-label domains.
@@ -206,32 +206,33 @@ export class ApiService {
 
     const password = await deriveLibrechatPassword(sub);
 
-    // Register — a 400/409 means the user already exists; ignore it.
-    // credentials: 'include' is required so the browser stores the HttpOnly
-    // refreshToken cookie that LibreChat sets in the login response.
-    await fetch(`${librechatBase}/api/auth/register`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: email.split('@')[0],
-        email,
-        password,
-        confirm_password: password,
-      }),
-    }).catch(() => { /* surfaced at login step if it's a real failure */ });
-
-    // Login — the server sets Set-Cookie: refreshToken (HttpOnly).
-    // With credentials: 'include' the browser stores this cookie for
-    // localhost:3080.  When the iframe later loads LibreChat, it sends the
-    // cookie and /api/auth/refresh succeeds, restoring the session without
-    // any user interaction.
-    const loginRes = await fetch(`${librechatBase}/api/auth/login`, {
+    const doLogin = () => fetch(`${librechatBase}/api/auth/login`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
     });
+
+    // Try login first — skips registration entirely for returning users.
+    let loginRes = await doLogin();
+
+    if (!loginRes.ok) {
+      // User doesn't exist yet (or password mismatch from a stale record).
+      // Register then retry login once.
+      await fetch(`${librechatBase}/api/auth/register`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: email.split('@')[0],
+          email,
+          password,
+          confirm_password: password,
+        }),
+      }).catch(() => { /* ignore — login below will surface real failures */ });
+
+      loginRes = await doLogin();
+    }
 
     if (!loginRes.ok) {
       throw new Error(`LibreChat login failed: ${loginRes.status}`);

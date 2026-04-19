@@ -1,4 +1,4 @@
-import { Injectable, signal } from '@angular/core';
+import { Injectable, computed, signal } from '@angular/core';
 import { environment } from '../../../environments/environment';
 
 @Injectable({ providedIn: 'root' })
@@ -7,6 +7,16 @@ export class AuthService {
   private _token = signal<string | null>(null);
 
   isAuthenticated = this._isAuthenticated.asReadonly();
+
+  /** True when LOCAL_DEV_SKIP_AUTH=true is set on the backend (and propagated to this bundle). */
+  readonly skipAuthMode = computed(() => {
+    if (environment.skipAuth === 'true') return true;
+    const { clientId } = environment.msalConfig;
+    return !clientId || clientId.startsWith('${');
+  });
+
+  /** True when real credentials are configured but the user has not signed in. */
+  readonly signInRequired = computed(() => !this.skipAuthMode() && !this._isAuthenticated());
 
   constructor() {
     // Restore token from session storage on init
@@ -59,8 +69,8 @@ export class AuthService {
       body: body.toString(),
     });
     const tokens = await response.json();
-    if (tokens.access_token) {
-      this.setToken(tokens.access_token);
+    if (tokens.id_token) {
+      this.setToken(tokens.id_token);
       sessionStorage.removeItem('pkce_code_verifier');
       window.history.replaceState(null, '', window.location.pathname);
     }

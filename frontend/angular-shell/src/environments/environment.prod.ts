@@ -1,5 +1,6 @@
 export const environment = {
   production: true,
+  skipAuth: 'false',
   apiUrl: '/api',
   librechatUrl: '/chat',
   msalConfig: {

@@ -10,6 +10,30 @@ export function getPool(): Pool {
   return _pool;
 }
 
+// ─── User provisioning ────────────────────────────────────────────────────────
+
+const _knownUsers = new Set<string>();
+
+export async function upsertUser(id: string, email: string): Promise<void> {
+  if (_knownUsers.has(id)) return;
+  const pool = getPool();
+  await pool.query(
+    `INSERT INTO users (id, email) VALUES ($1, $2)
+     ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email`,
+    [id, email],
+  );
+  _knownUsers.add(id);
+}
+
+export async function findUserByEmail(email: string): Promise<{ id: string; email: string } | null> {
+  const pool = getPool();
+  const result = await pool.query<{ id: string; email: string }>(
+    'SELECT id, email FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1',
+    [email],
+  );
+  return result.rows[0] ?? null;
+}
+
 // ─── Schema initialisation ────────────────────────────────────────────────────
 
 const SCHEMA_SQL = `
@@ -431,6 +455,25 @@ export async function findDraftJobWithoutSession(userId: string): Promise<Job | 
   const result = await pool.query<Job>(
     `SELECT * FROM jobs
       WHERE user_id = $1 AND session_id IS NULL AND status = 'draft'
+      ORDER BY created_at DESC LIMIT 1`,
+    [userId],
+  );
+  return result.rows[0] ?? null;
+}
+
+/**
+ * Returns the most recent draft job that references any session (not null).
+ * Used in the chat route as a fallback when getLatestSessionForUser returns
+ * null — this happens after switching from LOCAL_DEV_SKIP_AUTH=true to real
+ * Entra auth, where the user's draft was linked to a session created under the
+ * dev identity. The session_id from the draft is still valid for fetching
+ * session assets and finding the right video context.
+ */
+export async function findLatestDraftJobWithSession(userId: string): Promise<Job | null> {
+  const pool = getPool();
+  const result = await pool.query<Job>(
+    `SELECT * FROM jobs
+      WHERE user_id = $1 AND session_id IS NOT NULL AND status = 'draft'
       ORDER BY created_at DESC LIMIT 1`,
     [userId],
   );

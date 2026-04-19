@@ -7,6 +7,7 @@ import { finalize, forkJoin, of } from 'rxjs';
 import { catchError, map } from 'rxjs/operators';
 import { ApiService, Job, Output, SessionAsset, JobLog } from '../../core/services/api.service';
 import { JobService, JobStreamEvent, ToolProgressData } from '../../core/services/job.service';
+import { AuthService } from '../../core/auth/auth.service';
 import { environment } from '../../../environments/environment';
 
 interface JobFiles {
@@ -111,6 +112,11 @@ const LOG_PALETTE = [
   imports: [DatePipe],
   template: `
     <div class="dashboard">
+      @if (auth.skipAuthMode()) {
+        <div class="auth-banner auth-banner--dev">
+          Dev mode — auth bypassed. Requests use the static dev identity.
+        </div>
+      }
       <div class="dashboard__header">
         <h1>Session History</h1>
         <div class="history-controls">
@@ -325,6 +331,28 @@ const LOG_PALETTE = [
     }
   `,
   styles: [`
+    .auth-banner {
+      padding: 0.55rem 1rem;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+    .auth-banner--dev { background: #fffbeb; border: 1px solid #f59e0b; color: #92400e; }
+    .auth-banner--signin { background: #eff6ff; border: 1px solid #3b82f6; color: #1e40af; }
+    .auth-banner__btn {
+      padding: 0.25rem 0.75rem;
+      background: #1e40af;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+    .auth-banner__btn:hover { background: #1d3a9e; }
     .dashboard { width: 100%; }
     .dashboard__header { margin-bottom: 0.5rem; }
     .dashboard__header h1 { margin-bottom: 0.6rem; }
@@ -653,6 +681,7 @@ const LOG_PALETTE = [
   `],
 })
 export class DashboardComponent implements OnInit, OnDestroy {
+  auth = inject(AuthService);
   private api = inject(ApiService);
   private jobService = inject(JobService);
   private destroyRef = inject(DestroyRef);

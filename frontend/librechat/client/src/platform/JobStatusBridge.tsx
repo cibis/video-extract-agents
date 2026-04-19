@@ -76,9 +76,67 @@ function patchFetch(): () => void {
   };
 }
 
+/**
+ * Patch XMLHttpRequest to inject Authorization and X-Session-Id headers on
+ * API Gateway requests.  LibreChat's OpenAI streaming client uses XHR, so
+ * the fetch patch alone is not sufficient.
+ *
+ * Strategy:
+ *   - Track the request URL in open().
+ *   - Intercept setRequestHeader() to replace the LibreChat apiKey
+ *     Authorization header with the real Entra token.
+ *   - Inject X-Session-Id in send() (before it was ever set by LibreChat).
+ */
+function patchXhr(): () => void {
+  const originalOpen = XMLHttpRequest.prototype.open;
+  const originalSetRequestHeader = XMLHttpRequest.prototype.setRequestHeader;
+  const originalSend = XMLHttpRequest.prototype.send;
+
+  XMLHttpRequest.prototype.open = function (
+    method: string,
+    url: string | URL,
+    ...rest: unknown[]
+  ) {
+    const urlStr = typeof url === 'string' ? url : url.toString();
+    (this as any)._isApiGateway = urlStr.includes('/v1/');
+    return (originalOpen as Function).call(this, method, url, ...rest);
+  };
+
+  XMLHttpRequest.prototype.setRequestHeader = function (name: string, value: string) {
+    if ((this as any)._isApiGateway && name.toLowerCase() === 'authorization') {
+      const entraToken = getEntraToken();
+      if (entraToken) {
+        return originalSetRequestHeader.call(this, name, `Bearer ${entraToken}`);
+      }
+    }
+    return originalSetRequestHeader.call(this, name, value);
+  };
+
+  XMLHttpRequest.prototype.send = function (...args: unknown[]) {
+    if ((this as any)._isApiGateway) {
+      const sessionId = getSessionId();
+      if (sessionId) {
+        originalSetRequestHeader.call(this, 'X-Session-Id', sessionId);
+      }
+    }
+    return (originalSend as Function).call(this, ...args);
+  };
+
+  return () => {
+    XMLHttpRequest.prototype.open = originalOpen;
+    XMLHttpRequest.prototype.setRequestHeader = originalSetRequestHeader;
+    XMLHttpRequest.prototype.send = originalSend;
+  };
+}
+
 export const JobStatusBridge: React.FC = () => {
   useEffect(() => {
-    return patchFetch();
+    const unpatchFetch = patchFetch();
+    const unpatchXhr = patchXhr();
+    return () => {
+      unpatchFetch();
+      unpatchXhr();
+    };
   }, []);
 
   useEffect(() => {

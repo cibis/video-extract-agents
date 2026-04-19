@@ -5,6 +5,7 @@ import { VideoUploadComponent, UploadCompleteEvent } from '../shared/video-uploa
 import { LibrechatIframeComponent } from '../shared/librechat-iframe/librechat-iframe.component';
 import { ConversationService } from '../../core/services/conversation.service';
 import { ApiService, Job, Output, SessionAsset } from '../../core/services/api.service';
+import { AuthService } from '../../core/auth/auth.service';
 
 const SESSION_STORAGE_KEY = 'lc_session_id';
 
@@ -14,24 +15,37 @@ const SESSION_STORAGE_KEY = 'lc_session_id';
   imports: [VideoUploadComponent, LibrechatIframeComponent, DatePipe],
   template: `
     <div class="home">
+      @if (auth.skipAuthMode()) {
+        <div class="auth-banner auth-banner--dev">
+          Dev mode — auth bypassed. Requests use the static dev identity.
+        </div>
+      }
+      @if (auth.signInRequired()) {
+        <div class="auth-banner auth-banner--signin">
+          <span>Sign in is required to use this page.</span>
+          <button class="auth-banner__btn" (click)="auth.login()">Sign In</button>
+        </div>
+      }
       <div class="home__left">
         <section class="home__upload">
           <h2>Upload Files</h2>
-          <app-video-upload
-            [existingSessionId]="currentSessionId()"
-            [sessionAssets]="sessionAssets()"
-            (uploaded)="onUploadComplete($event)"
-            [newSessionEvent]="onNewSession$"
-          />
-          @if (currentSessionId()) {
-            <p class="home__session-info">
-              Session: <code>{{ currentSessionId() }}</code><br>
-              {{ currentVideoIds().length }} video(s) · {{ currentAssetIds().length }} file(s)
-            </p>
+          @if (!auth.signInRequired()) {
+            <app-video-upload
+              [existingSessionId]="currentSessionId()"
+              [sessionAssets]="sessionAssets()"
+              (uploaded)="onUploadComplete($event)"
+              [newSessionEvent]="onNewSession$"
+            />
+            @if (currentSessionId()) {
+              <p class="home__session-info">
+                Session: <code>{{ currentSessionId() }}</code><br>
+                {{ currentVideoIds().length }} video(s) · {{ currentAssetIds().length }} file(s)
+              </p>
+            }
+            <button class="home__new-btn" [disabled]="creatingConversation()" (click)="onNewSession()">
+              {{ creatingConversation() ? 'Creating…' : '+ New Session' }}
+            </button>
           }
-          <button class="home__new-btn" [disabled]="creatingConversation()" (click)="onNewSession()">
-            {{ creatingConversation() ? 'Creating…' : '+ New Session' }}
-          </button>
         </section>
         @if (progressVisible()) {
           <div class="job-progress">
@@ -77,18 +91,46 @@ const SESSION_STORAGE_KEY = 'lc_session_id';
             }
           </div>
         }
-        <div [class.disabled-div]="currentVideoIds().length === 0">
-          <app-librechat-iframe
-            #librechatIframe
-            [sessionId]="currentSessionId()"
-            [videoIds]="currentVideoIds()"
-            [jobId]="currentJobId()"
-          />
-        </div>
+        @if (auth.signInRequired()) {
+          <div class="chat-signin-prompt">
+            Sign in to start chatting with the AI assistant.
+          </div>
+        } @else {
+          <div [class.disabled-div]="currentVideoIds().length === 0">
+            <app-librechat-iframe
+              #librechatIframe
+              [sessionId]="currentSessionId()"
+              [videoIds]="currentVideoIds()"
+              [jobId]="currentJobId()"
+            />
+          </div>
+        }
       </section>
     </div>
   `,
   styles: [`
+    .auth-banner {
+      grid-column: 1 / -1;
+      padding: 0.55rem 1rem;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .auth-banner--dev { background: #fffbeb; border: 1px solid #f59e0b; color: #92400e; }
+    .auth-banner--signin { background: #eff6ff; border: 1px solid #3b82f6; color: #1e40af; }
+    .auth-banner__btn {
+      padding: 0.25rem 0.75rem;
+      background: #1e40af;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+    .auth-banner__btn:hover { background: #1d3a9e; }
     .disabled-div {
       pointer-events: none;
       opacity: 0.5;
@@ -155,6 +197,18 @@ const SESSION_STORAGE_KEY = 'lc_session_id';
     .home__history-download:hover { text-decoration: underline; }
 
     app-librechat-iframe { display: block; height: 64vh; min-height: 300px; }
+    .chat-signin-prompt {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 64vh;
+      min-height: 300px;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      color: #888;
+      font-size: 0.95rem;
+    }
 
     /* Job progress panel */
     .job-progress {
@@ -206,6 +260,7 @@ const SESSION_STORAGE_KEY = 'lc_session_id';
   `],
 })
 export class HomeComponent implements OnInit, AfterViewInit, OnDestroy {
+  auth = inject(AuthService);
   private conversationService = inject(ConversationService);
   private api = inject(ApiService);
 
@@ -236,6 +291,8 @@ export class HomeComponent implements OnInit, AfterViewInit, OnDestroy {
   private _activeJobId: string | null = null;
 
   ngOnInit(): void {
+    if (this.auth.signInRequired()) return;
+
     const storedSession = localStorage.getItem(SESSION_STORAGE_KEY);
     if (storedSession) {
       this.currentSessionId.set(storedSession);
@@ -312,6 +369,7 @@ export class HomeComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   ngAfterViewInit(): void {
+    if (this.auth.signInRequired()) return;
     // Always create a fresh draft on load so the job ID is guaranteed to exist
     // in the DB and matches what the chat route will find.
     void this.createNewConversation();

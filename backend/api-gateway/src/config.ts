@@ -16,6 +16,7 @@ const configSchema = z.object({
   FRONT_DOOR_ENDPOINT: z.string().default(''),
   FRONT_DOOR_SECRET: z.string().default(''),
   AGENT_ORCHESTRATOR_URL: z.string().default('http://agent-orchestrator:8001'),
+  AGENT_API_KEY: z.string().default(''),
   LOCAL_DEV_SKIP_AUTH: z.string().transform(v => v === 'true').default('false'),
   OUTPUT_URL_MODE: z.enum(['local', 'frontdoor']).default('frontdoor'),
   BLOB_PROXY_BASE_URL: z.string().default('http://localhost:8000'),

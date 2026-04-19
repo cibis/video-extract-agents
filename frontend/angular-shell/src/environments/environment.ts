@@ -1,10 +1,11 @@
 export const environment = {
   production: false,
+  skipAuth: '${LOCAL_DEV_SKIP_AUTH}',
   apiUrl: 'http://localhost:8000',
   librechatUrl: 'http://localhost:3080',
   msalConfig: {
-    clientId: 'your-client-id',
-    authority: 'https://login.microsoftonline.com/your-tenant-id',
-    redirectUri: 'http://localhost:4200',
+    clientId: '${AZURE_ENTRA_CLIENT_ID}',
+    authority: 'https://login.microsoftonline.com/${AZURE_ENTRA_TENANT_ID}',
+    redirectUri: '${APP_BASE_URL}',
   },
 };

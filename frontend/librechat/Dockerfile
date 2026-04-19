@@ -128,6 +128,31 @@ RUN node -e "\
   }\
 "
 
+# Inject X-Librechat-User-Email into every custom-endpoint request so the
+# api-gateway can resolve the real user identity when LibreChat calls it with
+# the static AGENT_API_KEY (server-to-server; browser auth headers don't reach here).
+RUN node -e "\
+  const fs = require('fs');\
+  const p = 'api/server/services/Endpoints/custom/initialize.js';\
+  let src = fs.readFileSync(p, 'utf8');\
+  src = src.replace(\
+    'let resolvedHeaders = {};',\
+    'let resolvedHeaders = {};\n  if (req.user && req.user.email) { resolvedHeaders[\"X-Librechat-User-Email\"] = req.user.email; }'\
+  );\
+  fs.writeFileSync(p, src);\
+  console.log('X-Librechat-User-Email header patch applied');\
+"
+
+# Remove registration rate limiter — replaced with a pass-through no-op.
+# The platform provisions LibreChat users programmatically on every sign-in;
+# rate limiting on account creation breaks this flow.
+RUN node -e "\
+  const fs = require('fs');\
+  const p = 'api/server/middleware/limiters/registerLimiter.js';\
+  fs.writeFileSync(p, 'module.exports = (_req, _res, next) => next();\n');\
+  console.log('registerLimiter patched to no-op');\
+"
+
 # Install dependencies and build
 FROM base AS builder
 RUN npm install -g bun

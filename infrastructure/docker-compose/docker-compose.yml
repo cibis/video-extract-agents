@@ -172,7 +172,11 @@ services:
       AZURE_STORAGE_CONTAINER_NAME: videos
       AZURE_SERVICE_BUS_CONNECTION_STRING: ${AZURE_SERVICE_BUS_CONNECTION_STRING:-Endpoint=sb://servicebus-emulator;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;UseDevelopmentEmulator=true;}
       AGENT_ORCHESTRATOR_URL: http://agent-orchestrator:8001
-      LOCAL_DEV_SKIP_AUTH: "true"
+      AGENT_API_KEY: ${AGENT_API_KEY:-dev-key-local}
+      LOCAL_DEV_SKIP_AUTH: ${LOCAL_DEV_SKIP_AUTH:-true}
+      AZURE_ENTRA_CLIENT_ID: ${AZURE_ENTRA_CLIENT_ID:-}
+      AZURE_ENTRA_TENANT_ID: ${AZURE_ENTRA_TENANT_ID:-}
+      AZURE_ENTRA_JWKS_URI: ${AZURE_ENTRA_JWKS_URI:-}
       OUTPUT_URL_MODE: local
       BLOB_PROXY_BASE_URL: http://localhost:8000
     depends_on:
@@ -338,6 +342,10 @@ services:
       - "4200:80"
     environment:
       TZ: UTC
+      AZURE_ENTRA_CLIENT_ID: ${AZURE_ENTRA_CLIENT_ID:-}
+      AZURE_ENTRA_TENANT_ID: ${AZURE_ENTRA_TENANT_ID:-}
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:4200}
+      LOCAL_DEV_SKIP_AUTH: ${LOCAL_DEV_SKIP_AUTH:-true}
     depends_on:
       api-gateway:
         condition: service_healthy
