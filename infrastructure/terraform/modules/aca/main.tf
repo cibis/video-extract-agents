@@ -689,7 +689,7 @@ resource "azurerm_container_app" "librechat" {
       }
       env {
         name  = "ANGULAR_ORIGIN"
-        value = var.app_base_url
+        value = var.app_base_url != "" ? var.app_base_url : "http://localhost:4200"
       }
       env {
         name  = "ALLOW_REGISTRATION"

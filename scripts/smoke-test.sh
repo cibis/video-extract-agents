@@ -46,8 +46,13 @@ if [[ -z "$GW_FQDN" ]]; then
 elif is_internal_fqdn "$GW_FQDN"; then
   pass "api-gateway /health — internal service, skipping external check (replica count checked below)"
 else
-  HEALTH=$(curl -sf --max-time 10 "https://$GW_FQDN/health" 2>/dev/null || echo "{}")
-  GW_STATUS=$(echo "$HEALTH" | jq -r '.status // "missing"' 2>/dev/null || echo "parse error")
+  # Retry once — first request after scale-up can return ACA "Unavailable" transiently
+  for attempt in 1 2; do
+    HEALTH=$(curl -sf --max-time 15 "https://$GW_FQDN/health" 2>/dev/null || echo "{}")
+    GW_STATUS=$(echo "$HEALTH" | jq -r '.status // "missing"' 2>/dev/null || echo "parse error")
+    [[ "$GW_STATUS" == "ok" ]] && break
+    [[ "$attempt" -lt 2 ]] && sleep 5
+  done
   [[ "$GW_STATUS" == "ok" ]] && pass "api-gateway /health → status: ok" \
     || fail "api-gateway /health → status" "got: $GW_STATUS"
 fi

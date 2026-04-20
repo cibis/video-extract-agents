@@ -125,7 +125,7 @@ export class LibrechatIframeComponent implements OnInit, OnChanges, OnDestroy {
     if (this.entraToken) {
       win.postMessage(
         { type: 'AUTH_TOKEN', token: this.entraToken },
-        environment.librechatUrl,
+        environment.librechatOrigin,
       );
     }
 
@@ -143,7 +143,7 @@ export class LibrechatIframeComponent implements OnInit, OnChanges, OnDestroy {
     if (!win) return;
     win.postMessage(
       { type: 'JOB_CONTEXT', jobId },
-      environment.librechatUrl,
+      environment.librechatOrigin,
     );
   }
 
@@ -152,7 +152,7 @@ export class LibrechatIframeComponent implements OnInit, OnChanges, OnDestroy {
     if (!win) return;
     win.postMessage(
       { type: 'SESSION_CONTEXT', sessionId, videoIds, apiUrl: environment.apiUrl },
-      environment.librechatUrl,
+      environment.librechatOrigin,
     );
   }
 
