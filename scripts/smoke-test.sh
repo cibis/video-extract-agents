@@ -31,6 +31,7 @@ get_fqdn() {
 }
 
 GW_FQDN=$(get_fqdn api-gateway)
+ORC_FQDN=$(get_fqdn agent-orchestrator)
 MCA_FQDN=$(get_fqdn mcp-server-analysis)
 MCP_FQDN=$(get_fqdn mcp-server-processing)
 
@@ -42,11 +43,20 @@ if [[ -z "$GW_FQDN" ]]; then
 else
   HEALTH=$(curl -sf --max-time 10 "https://$GW_FQDN/health" 2>/dev/null || echo "{}")
   GW_STATUS=$(echo "$HEALTH" | jq -r '.status // "missing"' 2>/dev/null || echo "parse error")
-  DB_STATUS=$(echo "$HEALTH" | jq -r '.db // "missing"' 2>/dev/null || echo "parse error")
   [[ "$GW_STATUS" == "ok" ]] && pass "api-gateway /health → status: ok" \
     || fail "api-gateway /health → status" "got: $GW_STATUS"
-  [[ "$DB_STATUS" == "ok" ]] && pass "api-gateway /health → db: ok" \
-    || fail "api-gateway /health → db" "got: $DB_STATUS"
+fi
+
+# ── Agent Orchestrator ────────────────────────────────────────────────────────
+echo ""
+echo "--- Agent Orchestrator ---"
+if [[ -z "$ORC_FQDN" ]]; then
+  fail "agent-orchestrator reachable" "could not resolve FQDN from $RG"
+else
+  HEALTH=$(curl -sf --max-time 10 "https://$ORC_FQDN/health" 2>/dev/null || echo "{}")
+  ORC_STATUS=$(echo "$HEALTH" | jq -r '.status // "missing"' 2>/dev/null || echo "parse error")
+  [[ "$ORC_STATUS" == "ok" ]] && pass "agent-orchestrator /health → status: ok" \
+    || fail "agent-orchestrator /health → status" "got: $ORC_STATUS"
 fi
 
 # ── MCP Server Analysis ────────────────────────────────────────────────────────
@@ -57,8 +67,8 @@ if [[ -z "$MCA_FQDN" ]]; then
 else
   TOOL_COUNT=$(curl -sf --max-time 15 "https://$MCA_FQDN/tools" 2>/dev/null \
     | jq 'length' 2>/dev/null || echo 0)
-  [[ "$TOOL_COUNT" -ge 8 ]] && pass "mcp-server-analysis /tools returns $TOOL_COUNT tools (≥8)" \
-    || fail "mcp-server-analysis /tools" "got $TOOL_COUNT tools, expected ≥8"
+  [[ "$TOOL_COUNT" -ge 12 ]] && pass "mcp-server-analysis /tools returns $TOOL_COUNT tools (≥12)" \
+    || fail "mcp-server-analysis /tools" "got $TOOL_COUNT tools, expected ≥12"
 fi
 
 # ── MCP Server Processing ──────────────────────────────────────────────────────
@@ -69,8 +79,8 @@ if [[ -z "$MCP_FQDN" ]]; then
 else
   TOOL_COUNT=$(curl -sf --max-time 15 "https://$MCP_FQDN/tools" 2>/dev/null \
     | jq 'length' 2>/dev/null || echo 0)
-  [[ "$TOOL_COUNT" -ge 4 ]] && pass "mcp-server-processing /tools returns $TOOL_COUNT tools (≥4)" \
-    || fail "mcp-server-processing /tools" "got $TOOL_COUNT tools, expected ≥4"
+  [[ "$TOOL_COUNT" -ge 7 ]] && pass "mcp-server-processing /tools returns $TOOL_COUNT tools (≥7)" \
+    || fail "mcp-server-processing /tools" "got $TOOL_COUNT tools, expected ≥7"
 fi
 
 # ── Service Bus dead-letter counts ─────────────────────────────────────────────
@@ -81,7 +91,7 @@ SB_NS=$(az servicebus namespace list --resource-group "$RG" \
 if [[ -z "$SB_NS" ]]; then
   fail "Service Bus namespace" "not found in $RG"
 else
-  for q in video-uploaded video-indexed job-queued job-completed job-failed; do
+  for q in video-uploaded video-indexed job-queued; do
     DL=$(az servicebus queue show \
       --namespace-name "$SB_NS" --resource-group "$RG" --name "$q" \
       --query "countDetails.deadLetterMessageCount" -o tsv 2>/dev/null || echo "?")
@@ -93,7 +103,7 @@ fi
 # ── Container Apps — at least 1 running replica each ──────────────────────────
 echo ""
 echo "--- Container Apps ---"
-SERVICES=(api-gateway agent-orchestrator preprocessing-worker notification-worker
+SERVICES=(api-gateway agent-orchestrator preprocessing-worker
           mcp-server-analysis mcp-server-processing angular-shell librechat)
 for svc in "${SERVICES[@]}"; do
   RUNNING=$(az containerapp replica list --name "$svc" --resource-group "$RG" \

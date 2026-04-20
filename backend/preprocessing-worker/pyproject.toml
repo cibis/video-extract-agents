@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "preprocessing-worker"
-version = "1.0.0"
+version = "1.0.0-beta"
 description = "Video Extract Platform — Preprocessing Worker (FFmpeg keyframe extraction)"
 authors = ["Video Extract Platform"]
 

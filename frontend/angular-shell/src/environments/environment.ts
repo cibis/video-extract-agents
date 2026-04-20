@@ -1,5 +1,6 @@
 export const environment = {
   production: false,
+  version: '1.0.0-beta',
   skipAuth: '${LOCAL_DEV_SKIP_AUTH}',
   apiUrl: 'http://localhost:8000',
   librechatUrl: 'http://localhost:3080',

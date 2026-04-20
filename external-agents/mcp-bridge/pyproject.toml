@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "mcp-bridge"
-version = "1.0.0"
+version = "1.0.0-beta"
 description = "Video Extract Platform — Standard MCP Bridge (translates MCP ↔ custom SSE)"
 authors = ["Video Extract Platform"]
 

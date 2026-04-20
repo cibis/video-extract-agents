@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "mcp-server-processing"
-version = "1.0.0"
+version = "1.0.0-beta"
 description = "Video Extract Platform — MCP Processing Tool Server (SSE)"
 authors = ["Video Extract Platform"]
 

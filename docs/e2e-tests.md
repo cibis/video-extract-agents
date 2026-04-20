@@ -239,7 +239,7 @@ Same as `detect_motion` but the planner selects `detect_motion_sports` because o
 
 ### `test_detect_objects_vision.py`
 
-**Tool under test:** `detect_objects_vision` (Claude vision via LiteLLM, frontier, API cost)
+**Tool under test:** `detect_objects_vision` (frontier vision model via LiteLLM, frontier, API cost)
 
 **Requires:** Credentials for the active `tool_frontier_model` (see frontier skip logic above). Skipped otherwise.
 
@@ -249,7 +249,7 @@ Same as `detect_motion` but the planner selects `detect_motion_sports` because o
 
 **What the pipeline does:**
 1. Planner selects `detect_objects_vision` because the target description ("colourful geometric patterns", "abstract shapes") is not a COCO class and the prompt explicitly asks for vision-based detection. The tool's `capability_tags` include `open-vocabulary` and its cost tier is `frontier`.
-2. Analysis agent calls `extract_frames` then `detect_objects_vision` with `object_descriptions: ["colourful geometric patterns", "abstract shapes"]`. `FrontierModelClient` batches frames and calls the Claude vision API for each batch.
+2. Analysis agent calls `extract_frames` then `detect_objects_vision` with `object_descriptions: ["colourful geometric patterns", "abstract shapes"]`. `FrontierModelClient` batches frames and calls the frontier vision model API for each batch.
 3. Claude returns per-frame detection results as a JSON array. Results are assembled into segments.
 4. Processing agent extracts and merges clips (or returns `no_matching_segments` if Claude found nothing in the solid blue frames).
 5. Job completes.
@@ -262,7 +262,7 @@ Same as `detect_motion` but the planner selects `detect_motion_sports` because o
 
 ### `test_analyze_scene.py`
 
-**Tool under test:** `analyze_scene` (Claude vision via LiteLLM, frontier, API cost)
+**Tool under test:** `analyze_scene` (frontier vision model via LiteLLM, frontier, API cost)
 
 **Requires:** Credentials for the active `tool_frontier_model` (see frontier skip logic above). Skipped otherwise.
 

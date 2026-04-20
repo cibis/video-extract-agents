@@ -211,8 +211,8 @@ MCP tool server over SSE (port 8100). Exposes `GET /tools` (enriched catalogue w
 - `detect_motion_sports` — sports-tuned motion event detection (jumps, tricks)
 - `detect_objects` — YOLO general object detection
 - `read_asset` — read a non-video session asset from Blob (JSON, CSV, text)
-- `analyze_scene` — **Claude vision** semantic scene description (frontier)
-- `detect_objects_vision` — **Claude vision** open-vocabulary object detection (frontier)
+- `analyze_scene` — **frontier vision model** semantic scene description (frontier)
+- `detect_objects_vision` — **frontier vision model** open-vocabulary object detection (frontier)
 - `transcribe_audio` — Whisper audio transcription
 
 **Frontier model support (`app/tools/model_registry.py`):**
@@ -250,7 +250,7 @@ Project fork of LibreChat. Upstream changes are merged periodically. All project
 | **Tool protocol (MCP/SSE)** | Both Python MCP servers — `POST /tools/{name}/invoke` returns `text/event-stream`; `GET /tools` returns enriched catalogue |
 | **Dynamic tool catalogue** | `agent-orchestrator/app/tools/catalogue.py` — fetches `GET /tools` from all MCP servers at crew startup; planner selects tools at runtime |
 | **Frontier tool model** | Frontier tools (`analyze_scene`, `detect_objects_vision`) always use `tool_frontier_model` via `get_model_client("claude-vision")`; configured in DB `app_settings` or env; `default_model`/`available_models` in the catalogue are informational only; no per-call model parameter |
-| **Frontier vision tools** | `mcp-server-analysis` — `analyze_scene` and `detect_objects_vision` use Claude vision via `FrontierModelClient` (LiteLLM); all other tools use local YOLO/Whisper |
+| **Frontier vision tools** | `mcp-server-analysis` — `analyze_scene` and `detect_objects_vision` use a frontier vision model via `FrontierModelClient` (LiteLLM); all other tools use local YOLO/Whisper |
 | **Session persistence** | `sessions` table groups uploads + jobs + outputs; `session_assets` is a unified blob index per session; `parent_job_id` enables follow-up tasks |
 | **Multi-video jobs** | `jobs.video_ids UUID[]` + backward-compat `jobs.video_id`; `run_crew()` accepts `video_urls: list[str]` |
 | **Unified download** | `generateSignedDownloadUrl()` in `blobService.ts` — single signing function; branches on `OUTPUT_URL_MODE`; used by all download routes |

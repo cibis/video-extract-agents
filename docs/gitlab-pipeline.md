@@ -306,8 +306,8 @@ All tests in `tests/e2e/` are run. They exercise the full pipeline end-to-end ag
 | `test_detect_motion.py` | Upload video → trigger preprocessing → call `detect_motion` MCP tool |
 | `test_detect_motion_sports.py` | Same with sports-tuned motion detection tool |
 | `test_detect_objects.py` | YOLO object detection tool via full pipeline |
-| `test_detect_objects_vision.py` | Claude vision object detection (frontier; skipped if no API key) |
-| `test_analyze_scene.py` | Claude vision scene description (frontier; skipped if no API key) |
+| `test_detect_objects_vision.py` | Frontier vision object detection (frontier; skipped if no API key) |
+| `test_analyze_scene.py` | Frontier vision scene description (frontier; skipped if no API key) |
 | `test_transcribe_audio.py` | Whisper audio transcription tool |
 | `test_estimate_height_above_surface.py` | Height estimation tool |
 | `test_followup_job.py` | Follow-up jobs using `parent_job_id` context |

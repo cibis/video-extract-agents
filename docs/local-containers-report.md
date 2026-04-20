@@ -142,8 +142,8 @@ The full local stack is defined in `infrastructure/docker-compose/docker-compose
   - `extract_frames` — returns pre-indexed keyframe images from Azurite
   - `detect_motion` / `detect_motion_sports` — optical flow motion scoring (general or sports-tuned)
   - `detect_objects` — YOLO-based general object detection
-  - `analyze_scene` — Claude vision semantic scene description (calls Anthropic API via LiteLLM)
-  - `detect_objects_vision` — Claude vision open-vocabulary object detection (calls Anthropic API via LiteLLM)
+  - `analyze_scene` — frontier vision model semantic scene description (calls configured model API via LiteLLM)
+  - `detect_objects_vision` — frontier vision model open-vocabulary object detection (calls configured model API via LiteLLM)
   - `transcribe_audio` — Whisper-based audio transcription
   - `read_asset` — reads non-video session assets (JSON, CSV, text) from Blob
 - **Protocol:** Every tool is invoked via `POST /tools/{name}/invoke` returning `text/event-stream`; tool catalogue is fetched at orchestrator startup via `GET /tools`

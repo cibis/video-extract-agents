@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "agent-orchestrator"
-version = "1.0.0"
+version = "1.0.0-beta"
 description = "Video Extract Platform — Agent Orchestrator (CrewAI + FastAPI)"
 authors = ["Video Extract Platform"]
 readme = "README.md"

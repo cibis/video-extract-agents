@@ -7,6 +7,8 @@ https://github.com/cibis/video_extract
 
 # Video Extract Agents
 
+![Version](https://img.shields.io/badge/version-1.0.0--beta-blue) ![Status](https://img.shields.io/badge/status-beta-orange)
+
 A prompt-driven video extraction platform. Upload a video, describe what you want in plain English, and AI agents extract and compile the relevant segments into a highlight reel.
 
 > **Example:** *"Extract all kitesurfing jumps from this video and compile them into a highlight reel."*
@@ -147,7 +149,6 @@ Requires Docker Desktop (≥ 4.30) with WSL 2. See [docs/getting-started.md](doc
 cp backend/api-gateway/.env.example              backend/api-gateway/.env
 cp backend/agent-orchestrator/.env.example       backend/agent-orchestrator/.env
 cp backend/preprocessing-worker/.env.example     backend/preprocessing-worker/.env
-cp backend/notification-worker/.env.example      backend/notification-worker/.env
 cp mcp-servers/mcp-server-analysis/.env.example  mcp-servers/mcp-server-analysis/.env
 cp mcp-servers/mcp-server-processing/.env.example mcp-servers/mcp-server-processing/.env
 cp frontend/librechat/.env.example               frontend/librechat/.env
@@ -225,11 +226,14 @@ backend/
   api-gateway/            Node.js + Express (TypeScript) — auth, SAS tokens, SSE, chat proxy
   agent-orchestrator/     Python + CrewAI (FastAPI) — planner/analyst/processor agents
   preprocessing-worker/   Python — FFmpeg keyframe extraction
-  notification-worker/    Python — email delivery via Azure Communication Services
 
 mcp-servers/
-  mcp-server-analysis/    Port 8100 — extract_frames, detect_motion, detect_objects, transcribe_audio
-  mcp-server-processing/  Port 8200 — split_video, extract_clip, merge_clips, transform_video
+  mcp-server-analysis/    Port 8100 — ingest_video, extract_frames, detect_motion, detect_motion_sports,
+                          detect_objects, detect_objects_vision, analyze_scene, transcribe_audio,
+                          estimate_height_above_surface, read_asset, query_asset, write_query_asset,
+                          write_segments_asset
+  mcp-server-processing/  Port 8200 — split_video, extract_clip, extract_clips_bulk, merge_clips,
+                          transform_video, write_asset, query_asset, write_query_asset
 
 frontend/
   angular-shell/          Angular 19 — upload UI, job dashboard, LibreChat iframe host
@@ -245,14 +249,22 @@ infrastructure/
   docker-compose/         Full local dev stack
   terraform/
     modules/              aca, storage, database (reusable modules)
-    envs/                 dev, prod, test (ephemeral per CI pipeline)
+    envs/                 dev, test (ephemeral per CI pipeline)
 
 tests/
   e2e/                    End-to-end tests (ephemeral Azure + local Docker Compose)
 
 scripts/
-  init_db.py              Create all database tables
+  init_db.py                    Create all database tables
+  init_storage.py               Create Blob Storage containers
   create_service_bus_queues.py  Create all Service Bus queues
+  run-e2e-local.sh              Run E2E tests locally (fully containerised)
+  bootstrap-dev.sh              First-time local dev setup
+  smoke-test.sh                 Quick smoke test against running stack
+  teardown.sh                   Stop and clean up local stack
+  repair_job_output.py          Repair job output records in PostgreSQL
+  collect_test_logs.py          Collect logs from CI test run
+  check_e2e_threshold.py        Assert E2E test pass rate meets threshold
 
 docs/
   architecture.md         System architecture reference

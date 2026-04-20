@@ -1,5 +1,6 @@
 export const environment = {
   production: true,
+  version: '1.0.0-beta',
   skipAuth: 'false',
   apiUrl: '/api',
   librechatUrl: '/chat',

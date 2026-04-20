@@ -1,6 +1,7 @@
 import { Component } from '@angular/core';
 import { RouterOutlet, RouterLink } from '@angular/router';
 import { AuthService } from './core/auth/auth.service';
+import { environment } from '../environments/environment';
 
 @Component({
   selector: 'app-root',
@@ -18,6 +19,7 @@ import { AuthService } from './core/auth/auth.service';
           } @else {
             <button (click)="auth.login()">Sign In</button>
           }
+          <span class="app-header__version">v{{ version }}</span>
         </nav>
       </div>
     </header>
@@ -63,6 +65,11 @@ import { AuthService } from './core/auth/auth.service';
         font-size: 0.875rem;
       }
     }
+    .app-header__version {
+      font-size: 0.7rem;
+      color: rgba(255,255,255,0.55);
+      letter-spacing: 0.02em;
+    }
     .app-main {
       padding: 2rem 1.5rem 2rem;
       width: 100%;
@@ -70,5 +77,6 @@ import { AuthService } from './core/auth/auth.service';
   `],
 })
 export class AppComponent {
+  readonly version = environment.version;
   constructor(public auth: AuthService) {}
 }

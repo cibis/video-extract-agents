@@ -194,7 +194,7 @@ Available tools:
     tags=[frames, keyframes] specialization=general default_model=none
   - detect_motion_sports [analysis]: Detect high-intensity sports motion events...
     tags=[motion, sports, events] specialization=sports default_model=local/yolo
-  - analyze_scene [analysis]: Use a Claude vision model to semantically describe a scene...
+  - analyze_scene [analysis]: Use a frontier vision model to semantically describe a scene...
     tags=[vision, frontier, scene, semantic] specialization=frontier_vision default_model=claude-vision
   - extract_clip [processing]: Extract a time-bounded clip from a video.
     ...
@@ -379,13 +379,13 @@ data: {"status": "done"}
 - **Reads from:** Blob Storage (downloads frame image, then base64-encodes it)
 - **Input:** `{frame_url: string, question?: string, model?: string}`
 - **Output:** `{description: string, objects: [string], activities: [string], setting: string, model_used: string}`
-- **Method:** Sends the frame as a base64-encoded image to a Claude vision model via LiteLLM. Default model alias: `claude-vision` → resolves to `anthropic/claude-opus-4-6` (overridable via `TOOL_FRONTIER_MODEL` env var or `tool_frontier_model` DB setting). Falls back to `claude-haiku` for lower-cost calls. **Use only when YOLO-style detection cannot answer the question.**
+- **Method:** Sends the frame as a base64-encoded image to a frontier vision model via LiteLLM. Default model alias: `claude-vision` → resolves to `anthropic/claude-opus-4-6` (overridable via `TOOL_FRONTIER_MODEL` env var or `tool_frontier_model` DB setting). Falls back to `claude-haiku` for lower-cost calls. **Use only when YOLO-style detection cannot answer the question.**
 
 ### Tool: `detect_objects_vision` *(frontier — calls Anthropic API)*
 - **Reads from:** Blob Storage (downloads and base64-encodes frame)
 - **Input:** `{frame_url: string, object_descriptions: [string], model?: string}`
 - **Output:** `{detections: [{description, present: bool, confidence, notes}], model_used: string}`
-- **Method:** Sends frame + natural-language object descriptions to Claude vision. Unlike YOLO, accepts arbitrary descriptions (e.g. `"kitesurfer mid-jump"`, `"person wearing red helmet"`). More expensive and slower than YOLO — only use when YOLO cannot identify the target.
+- **Method:** Sends frame + natural-language object descriptions to a frontier vision model. Unlike YOLO, accepts arbitrary descriptions (e.g. `"kitesurfer mid-jump"`, `"person wearing red helmet"`). More expensive and slower than YOLO — only use when YOLO cannot identify the target.
 
 ### Tool: `transcribe_audio`
 - **Reads from:** Blob Storage (downloads video for audio extraction)
@@ -497,8 +497,8 @@ PostgreSQL video_keyframe_index
 | agent-orchestrator | Planner Agent | Claude (default: `claude-sonnet-4-6`) | Interprets prompt, selects tools, generates extraction plan |
 | agent-orchestrator | Analysis Agent | Claude (same) | ReAct reasoning — decides which tool call to make next |
 | agent-orchestrator | Processing Agent | Claude (same) | ReAct reasoning — decides clip/merge sequence |
-| mcp-server-analysis | `analyze_scene` tool | Claude vision (default: `claude-opus-4-6`) | Semantic scene understanding from keyframe images |
-| mcp-server-analysis | `detect_objects_vision` tool | Claude vision (same, or `claude-haiku`) | Open-vocabulary object detection from keyframe images |
+| mcp-server-analysis | `analyze_scene` tool | frontier vision model (default: `claude-opus-4-6`) | Semantic scene understanding from keyframe images |
+| mcp-server-analysis | `detect_objects_vision` tool | frontier vision model (same, or `claude-haiku`) | Open-vocabulary object detection from keyframe images |
 | mcp-server-analysis | `detect_motion`, `detect_motion_sports` | local/OpenCV | Optical flow — no model API call |
 | mcp-server-analysis | `detect_objects_*` (non-vision) | local/YOLO | Object detection — no model API call |
 | mcp-server-analysis | `transcribe_audio` | local/Whisper | Audio transcription — no model API call |
