@@ -1,4 +1,4 @@
-version: 1.1.5
+version: 1.2.0
 cache: true
 
 # Custom endpoint wired to Video Extract API Gateway
@@ -37,6 +37,8 @@ interface:
   multiConvo: false
   fileUpload: false
   agents: false
+  bookmarks: false
+  prompts: false
 
 # Registration is handled programmatically by the Angular shell via the
 # provision-user flow (register + login using Entra-derived credentials).
