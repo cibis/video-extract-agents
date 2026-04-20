@@ -3,7 +3,6 @@ from pydantic import BaseModel
 from fastapi.responses import JSONResponse
 from app.crew import run_crew
 from app.db import update_job_status
-from app.consumer import publish_job_result
 import uuid
 
 router = APIRouter()
@@ -49,10 +48,6 @@ async def run(request: RunRequest, http_request: Request):
 
         if request.job_id:
             await update_job_status(job_id, "completed", output_url=output_url)
-            await publish_job_result(
-                "completed",
-                {"job_id": job_id, "user_id": user_id, "output_url": output_url, "session_id": session_id},
-            )
 
         response = JSONResponse(
             content={"output_url": output_url, "job_id": job_id}
@@ -62,8 +57,4 @@ async def run(request: RunRequest, http_request: Request):
     except Exception as exc:
         if request.job_id:
             await update_job_status(job_id, "failed", error=str(exc))
-            await publish_job_result(
-                "failed",
-                {"job_id": job_id, "user_id": user_id, "error": str(exc), "session_id": session_id},
-            )
         raise HTTPException(status_code=500, detail=str(exc))
