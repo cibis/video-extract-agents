@@ -36,6 +36,7 @@ interface:
   presets: false
   multiConvo: false
   fileUpload: false
+  agents: false
 
 # Registration is handled programmatically by the Angular shell via the
 # provision-user flow (register + login using Entra-derived credentials).
