@@ -54,17 +54,10 @@ resource "azurerm_servicebus_namespace" "main" {
 }
 
 resource "azurerm_servicebus_queue" "queues" {
-  for_each           = toset(["video-uploaded", "video-indexed", "job-queued", "job-completed", "job-failed"])
+  for_each           = toset(["video-uploaded", "video-indexed", "job-queued"])
   name               = each.key
   namespace_id       = azurerm_servicebus_namespace.main.id
   max_delivery_count = 5
-}
-
-module "appcommunication" {
-  source              = "../../modules/appcommunication"
-  resource_group_name = azurerm_resource_group.main.name
-  environment         = local.environment
-  tags                = local.tags
 }
 
 module "aca" {
@@ -92,7 +85,6 @@ module "aca" {
   aws_secret_access_key         = var.aws_secret_access_key
   aws_region_name               = var.aws_region_name
   appinsights_connection_string = ""
-  acs_connection_string         = module.appcommunication.primary_connection_string
   front_door_url                = ""
   local_dev_skip_auth           = true
   postgres_persistent_volume    = false

@@ -2,7 +2,7 @@
 # Video Extract Platform — GitLab CI/CD Pipeline
 # Stages: lint → build_images → aca_test_env_create → deploy_test_services →
 #         e2e_tests → collect_e2e_logs → aca_test_env_destroy → push_to_acr →
-#         deploy_dev → manual_approval → deploy_prod
+#         deploy_dev → manual_approval → deploy_prod (placeholder)
 # TGP-1
 
 stages:
@@ -87,7 +87,7 @@ lint:python:
   image: python:3.11-slim
   script:
     - pip install ruff
-    - ruff check backend/agent-orchestrator backend/preprocessing-worker backend/notification-worker mcp-servers/
+    - ruff check backend/agent-orchestrator backend/preprocessing-worker mcp-servers/
   rules:
     - changes:
         - backend/**/*.py
@@ -143,19 +143,6 @@ build:preprocessing-worker:
     - docker push "$ACR_REGISTRY/preprocessing-worker:$IMAGE_TAG"
     - docker tag "$ACR_REGISTRY/preprocessing-worker:$IMAGE_TAG" "$ACR_REGISTRY/preprocessing-worker:buildcache"
     - docker push "$ACR_REGISTRY/preprocessing-worker:buildcache" || true
-
-build:notification-worker:
-  <<: *build-image
-  script:
-    - |
-      docker build \
-        --build-arg BUILDKIT_INLINE_CACHE=1 \
-        --cache-from "$ACR_REGISTRY/notification-worker:buildcache" \
-        -t "$ACR_REGISTRY/notification-worker:$IMAGE_TAG" \
-        backend/notification-worker/
-    - docker push "$ACR_REGISTRY/notification-worker:$IMAGE_TAG"
-    - docker tag "$ACR_REGISTRY/notification-worker:$IMAGE_TAG" "$ACR_REGISTRY/notification-worker:buildcache"
-    - docker push "$ACR_REGISTRY/notification-worker:buildcache" || true
 
 build:mcp-server-analysis:
   stage: build_analysis
@@ -244,7 +231,7 @@ deploy_test_services:
     - when: on_success
   script:
     - |
-      SERVICES=(api-gateway agent-orchestrator preprocessing-worker notification-worker
+      SERVICES=(api-gateway agent-orchestrator preprocessing-worker
                 mcp-server-analysis mcp-server-processing angular-shell librechat)
       RG="video-extract-test-${CI_PIPELINE_ID}"
       for svc in "${SERVICES[@]}"; do
@@ -336,7 +323,7 @@ collect_e2e_logs:
       artifacts: true
   script:
     - RG="video-extract-test-${CI_PIPELINE_ID}"
-    - SERVICES=(api-gateway agent-orchestrator preprocessing-worker notification-worker
+    - SERVICES=(api-gateway agent-orchestrator preprocessing-worker
                 mcp-server-analysis mcp-server-processing angular-shell librechat postgresql)
     - mkdir -p ci-logs
     - |
@@ -382,7 +369,7 @@ collect_e2e_logs:
       echo "=== Service Bus Queue Depths ===" > ci-logs/servicebus.log
       SB_NS=$(az servicebus namespace list --resource-group "$RG" --query "[0].name" --output tsv 2>/dev/null || true)
       if [ -n "$SB_NS" ]; then
-        for q in video-uploaded video-indexed job-queued job-completed job-failed; do
+        for q in video-uploaded video-indexed job-queued; do
           az servicebus queue show \
             --namespace-name "$SB_NS" \
             --resource-group "$RG" \
@@ -441,7 +428,7 @@ push_to_acr:
   <<: *docker-login
   script:
     - |
-      for svc in api-gateway agent-orchestrator preprocessing-worker notification-worker \
+      for svc in api-gateway agent-orchestrator preprocessing-worker \
                  mcp-server-analysis mcp-server-processing angular-shell librechat; do
         docker pull "$ACR_REGISTRY/$svc:$IMAGE_TAG"
         docker tag  "$ACR_REGISTRY/$svc:$IMAGE_TAG" "$ACR_REGISTRY/$svc:latest"
@@ -460,7 +447,7 @@ deploy_dev:
   <<: *azure-login
   script:
     - |
-      for svc in api-gateway agent-orchestrator preprocessing-worker notification-worker \
+      for svc in api-gateway agent-orchestrator preprocessing-worker \
                  mcp-server-analysis mcp-server-processing angular-shell librechat; do
         az containerapp update \
           --name "$svc" \
@@ -527,46 +514,9 @@ manual_approval:
 
 deploy_prod:
   stage: deploy_prod
-  image: mcr.microsoft.com/azure-cli:latest
-  <<: *azure-login
+  image: alpine:latest
   script:
-    - |
-      for svc in api-gateway agent-orchestrator preprocessing-worker notification-worker \
-                 mcp-server-analysis mcp-server-processing angular-shell librechat; do
-        az containerapp update \
-          --name "$svc" \
-          --resource-group "video-extract-prod" \
-          --image "$ACR_REGISTRY/$svc:$IMAGE_TAG"
-      done
-    - |
-      echo "Running db-init to apply schema migrations..."
-      EXEC_NAME=$(az containerapp job start \
-        --name db-init \
-        --resource-group "video-extract-prod" \
-        --query "name" --output tsv)
-      echo "db-init execution: $EXEC_NAME — polling for completion..."
-      for i in $(seq 1 30); do
-        STATUS=$(az containerapp job execution list \
-          --name db-init \
-          --resource-group "video-extract-prod" \
-          --query "[?name=='$EXEC_NAME'].properties.status | [0]" \
-          --output tsv 2>/dev/null || echo "")
-        if [ "$STATUS" = "Succeeded" ]; then
-          echo "db-init completed successfully."
-          break
-        elif [ "$STATUS" = "Failed" ]; then
-          echo "ERROR: db-init failed in prod. Check ACA job logs."
-          az containerapp job execution list \
-            --name db-init \
-            --resource-group "video-extract-prod" \
-            --query "[?name=='$EXEC_NAME']" --output json || true
-          exit 1
-        fi
-        echo "  attempt $i/30: status=${STATUS:-pending} — waiting 10s..."
-        sleep 10
-      done
-  environment:
-    name: prod
+    - echo "Production deployment not yet configured — placeholder"
   needs:
     - manual_approval
   only:

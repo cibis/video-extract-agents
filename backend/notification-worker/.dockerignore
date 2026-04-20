@@ -1,9 +1,0 @@
-__pycache__/
-*.py[cod]
-.env
-.env.*
-!.env.example
-.venv/
-tests/
-.git/
-*.md

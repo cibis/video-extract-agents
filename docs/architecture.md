@@ -33,7 +33,7 @@
 
 ## 1. System Overview
 
-Users upload video files and describe what they want extracted in plain English (e.g., "compile all kitesurfing jumps into a highlight reel"). The platform uses AI agents to interpret the prompt, orchestrate a sequence of MCP tool calls for video analysis and processing, and deliver a compiled output video via email and a signed CDN URL.
+Users upload video files and describe what they want extracted in plain English (e.g., "compile all kitesurfing jumps into a highlight reel"). The platform uses AI agents to interpret the prompt, orchestrate a sequence of MCP tool calls for video analysis and processing, and deliver a compiled output video via a signed CDN URL.
 
 ---
 
@@ -61,7 +61,6 @@ Users upload video files and describe what they want extracted in plain English 
 | Database | PostgreSQL 15 (ACA container, Azure Files backed) |
 | Messaging | Azure Service Bus |
 | Authentication | Azure Entra External ID (magic link / JWT) |
-| Email | Azure Communication Services |
 | Secrets | Azure Key Vault (prod); .env files (local) |
 | Observability | Azure Application Insights (auto-instrumentation) |
 | CI/CD | GitLab CI |
@@ -79,8 +78,7 @@ video-extract-agents/
 ├── backend/
 │   ├── api-gateway/            Node.js + Express (TypeScript) — auth, SAS tokens, job CRUD, SSE stream, chat proxy
 │   ├── agent-orchestrator/     Python + CrewAI — planner/analyst/processor agents; HTTP + SB consumer
-│   ├── preprocessing-worker/   Python — FFmpeg keyframe extraction; triggered by VIDEO_UPLOADED
-│   └── notification-worker/    Python — ACS email dispatch; triggered by JOB_COMPLETED/JOB_FAILED
+│   └── preprocessing-worker/   Python — FFmpeg keyframe extraction; triggered by VIDEO_UPLOADED
 │
 ├── mcp-servers/
 │   ├── mcp-server-analysis/    Python SSE tool server (port 8100): read-only video analysis
@@ -111,7 +109,7 @@ The `backend/api-gateway/` service is Node.js and has its own:
 - `.env.example` — required environment variables
 - `src/` — application source
 
-All Python services (`backend/agent-orchestrator/`, `backend/preprocessing-worker/`, `backend/notification-worker/`, `mcp-servers/*/`) have their own:
+All Python services (`backend/agent-orchestrator/`, `backend/preprocessing-worker/`, `mcp-servers/*/`) have their own:
 - `pyproject.toml` — Poetry dependencies
 - `Dockerfile` — container build
 - `.env.example` — required environment variables
@@ -160,15 +158,9 @@ Agent Orchestrator (Python — SB consumer + HTTP service)
       Processing Agent → calls mcp-server-processing tools (SSE)
   → output video written to Blob Storage
   → PostgreSQL: jobs (status=completed, output_url)
-  → Service Bus: JOB_COMPLETED
 
 GET /v1/jobs/{id}/stream (Node.js API Gateway)
   → SSE stream polling PostgreSQL → pushes status to Angular
-
-Notification Worker (Python — SB consumer)
-  → fetches user email from PostgreSQL
-  → generates signed Front Door URL
-  → sends email via Azure Communication Services
 
 Angular shell
   → receives postMessage from LibreChat iframe: { type: 'JOB_COMPLETED', ... }
@@ -241,9 +233,6 @@ FFmpeg + OpenCV keyframe extraction pipeline. Reduces AI analysis surface from f
 
 After indexing, if `session_id` is present in the `VIDEO_UPLOADED` message, inserts an `uploaded_video` row into `session_assets` and forwards `session_id` in the `VIDEO_INDEXED` event.
 
-### `backend/notification-worker/app/notifier.py`
-Sends job-completed and job-failed emails via Azure Communication Services, including a time-limited signed Front Door download URL.
-
 ### `frontend/librechat/`
 Project fork of LibreChat. Upstream changes are merged periodically. All project-specific customisations live in `client/src/platform/` (React components, branding) and root config files:
 - `librechat.yaml` — custom endpoint pointing to `POST /v1/chat`; model selector, file upload, and parameter UI disabled
@@ -284,11 +273,10 @@ Project fork of LibreChat. Upstream changes are merged periodically. All project
 |---|---|---|
 | **Anthropic API** | Claude model for agent reasoning + frontier vision tools | agent-orchestrator, mcp-server-analysis |
 | **Azure Blob Storage** | Video storage (uploads, keyframes, segments, outputs) | all services |
-| **Azure Service Bus** | Async event bus (5 queues) | all backend services |
-| **PostgreSQL 15** | Metadata (users, videos, jobs, keyframe index) — ACA container, Azure Files backed | api-gateway (Node.js), agent-orchestrator, preprocessing-worker, notification-worker |
+| **Azure Service Bus** | Async event bus (3 queues) | all backend services |
+| **PostgreSQL 15** | Metadata (users, videos, jobs, keyframe index) — ACA container, Azure Files backed | api-gateway (Node.js), agent-orchestrator, preprocessing-worker |
 | **Azure Entra External ID** | Magic link auth + JWT issuance | api-gateway — Node.js middleware validates JWT |
-| **Azure Communication Services** | Transactional email (job results) | notification-worker |
-| **Azure Front Door** | CDN + signed URL delivery for output videos | api-gateway, notification-worker |
+| **Azure Front Door** | CDN + signed URL delivery for output videos | api-gateway |
 | **Azure Container Registry** | Docker image storage | CI/CD pipeline |
 | **Azure Key Vault** | Secret injection at runtime (prod/CI) | all ACA services |
 | **LibreChat (fork)** | Forked chat UI embedded in Angular shell via iframe; custom endpoint, branding, postMessage bridge | frontend |
@@ -324,7 +312,7 @@ One Application Insights resource per environment. Connection string (`APPLICATI
 
 ## 10. Local Development
 
-The platform has three running modes: **Local** (docker-compose), **CI** (GitLab CI — ephemeral Azure test environment), and **Azure** (dev + prod). Three env flags bridge the gap between local emulators and Azure-only integrations.
+The platform has three running modes: **Local** (docker-compose), **CI** (GitLab CI — ephemeral Azure test environment), and **Azure** (dev). Two env flags bridge the gap between local emulators and Azure-only integrations.
 
 ### Env flags
 
@@ -332,15 +320,12 @@ The platform has three running modes: **Local** (docker-compose), **CI** (GitLab
 |---|---|---|---|---|
 | `LOCAL_DEV_SKIP_AUTH` | `true` | unset | unset | api-gateway |
 | `OUTPUT_URL_MODE` | `local` | `frontdoor` | `frontdoor` | api-gateway |
-| `NOTIFICATION_MODE` | `stdout` | `acs` | `acs` | notification-worker |
 
-CI uses real Azure integrations (real auth, real Front Door URLs, real ACS email) targeting a temporary ACA environment created per pipeline run and destroyed after tests complete.
+CI uses real Azure integrations (real auth, real Front Door URLs) targeting a temporary ACA environment created per pipeline run and destroyed after tests complete.
 
 **`LOCAL_DEV_SKIP_AUTH=true`** — `middleware/auth.ts` skips JWT validation and injects a static identity `{ id: "local-dev-user", email: "dev@local" }`. Must be absent in CI and Azure.
 
 **`OUTPUT_URL_MODE=local`** — `routes/outputs.ts` returns a direct Azurite URL (`http://localhost:10000/devstoreaccount1/outputs/<id>`) instead of a signed Front Door URL.
-
-**`NOTIFICATION_MODE=stdout`** — `notifier.py` logs email subject, recipient, and body to stdout instead of calling Azure Communication Services.
 
 `APPLICATIONINSIGHTS_CONNECTION_STRING` is omitted from local `.env`; both SDKs are a no-op when the var is absent.
 
@@ -361,10 +346,8 @@ scripts/run-e2e-local.sh -k test_detect_motion
 |---|---|
 | `backend/api-gateway/src/middleware/auth.ts` | Branch on `LOCAL_DEV_SKIP_AUTH` |
 | `backend/api-gateway/src/routes/outputs.ts` | Branch on `OUTPUT_URL_MODE` |
-| `backend/notification-worker/app/notifier.py` | Branch on `NOTIFICATION_MODE` |
 | `infrastructure/docker-compose/docker-compose.yml` | Set local dev flags on relevant services |
 | `backend/api-gateway/.env.example` | Document `LOCAL_DEV_SKIP_AUTH`, `OUTPUT_URL_MODE` |
-| `backend/notification-worker/.env.example` | Document `NOTIFICATION_MODE` |
 
 ---
 
@@ -519,19 +502,17 @@ graph TD
 
     subgraph Workers["Background Workers"]
         PPW["Preprocessing Worker\nFFmpeg keyframe extraction"]
-        NW["Notification Worker\nACS email dispatch"]
     end
 
     subgraph State["State & Messaging"]
         BLOB["Azure Blob Storage\nvideos / keyframes / segments / outputs"]
         PG["PostgreSQL 15 (ACA container)\nusers · videos · jobs · keyframe_index"]
-        SB["Azure Service Bus\nVIDEO_UPLOADED → VIDEO_INDEXED\nJOB_QUEUED → JOB_COMPLETED / JOB_FAILED"]
+        SB["Azure Service Bus\nVIDEO_UPLOADED → VIDEO_INDEXED\nJOB_QUEUED"]
     end
 
     subgraph ExtSvcs["External Services"]
         ENTRA["Azure Entra External ID\n(magic link / JWT)"]
         FD["Azure Front Door\n(CDN + signed URLs)"]
-        ACS["Azure Communication Services\n(transactional email)"]
         KV["Azure Key Vault\n(secrets)"]
         ANTHROPIC["Anthropic API\nClaude via LiteLLM"]
         APPINS["Application Insights\n(auto-instrumentation)"]
@@ -555,7 +536,6 @@ graph TD
     ORC -->|"LiteLLM"| ANTHROPIC
     ORC <-->|"job + keyframe index"| PG
     ORC -->|"output video"| BLOB
-    ORC -->|"JOB_COMPLETED / JOB_FAILED"| SB
     ORC -.->|"telemetry"| APPINS
 
     MCA <-->|"read keyframes"| BLOB
@@ -568,16 +548,9 @@ graph TD
     PPW -->|"VIDEO_INDEXED"| SB
     PPW -.->|"telemetry"| APPINS
 
-    SB -->|"JOB_COMPLETED / JOB_FAILED"| NW
-    NW <-->|"user email"| PG
-    NW -->|"signed download URL"| FD
-    NW -->|"send email"| ACS
-    NW -.->|"telemetry"| APPINS
-
     KV -.->|"secrets at runtime"| GW
     KV -.->|"secrets at runtime"| ORC
     KV -.->|"secrets at runtime"| PPW
-    KV -.->|"secrets at runtime"| NW
 ```
 
 ---
@@ -586,7 +559,7 @@ graph TD
 
 ### 12.1 Local — Docker Compose
 
-All services run in containers on a single host. Azure-only services are replaced by local emulators. Three env flags stub out auth, signed URLs, and email.
+All services run in containers on a single host. Azure-only services are replaced by local emulators. Two env flags stub out auth and signed URLs.
 
 ```mermaid
 graph TD
@@ -609,7 +582,6 @@ graph TD
 
         subgraph WRK["Worker containers"]
             PPW["preprocessing-worker"]
-            NW["notification-worker\nNOTIFICATION_MODE=stdout"]
         end
 
         subgraph EMU["Emulators"]
@@ -644,14 +616,11 @@ graph TD
     PPW --> AZ
     PPW --> PGDB
     PPW --> SBE
-    SBE --> NW
-    NW <--> PGDB
-    NW -->|"stdout (no real email)"| NW
 ```
 
-### 12.2 Azure — Container Apps (dev / prod)
+### 12.2 Azure — Container Apps (dev)
 
-Each environment is an isolated Azure Container Apps environment with its own managed services. KEDA drives autoscaling for all queue-processing services.
+The dev environment is an isolated Azure Container Apps environment with its own managed services. KEDA drives autoscaling for all queue-processing services. Production deployment is not yet configured.
 
 ```mermaid
 graph TD
@@ -669,7 +638,7 @@ graph TD
             IMAGES["Docker images\n(all services)"]
         end
 
-        subgraph ACA["Azure Container Apps Environment (dev | prod)"]
+        subgraph ACA["Azure Container Apps Environment (dev)"]
 
             subgraph HTTP_Scale["HTTP autoscaling (concurrency)"]
                 ANGULAR["angular-shell"]
@@ -683,7 +652,6 @@ graph TD
             subgraph SB_Scale["Service Bus autoscaling (KEDA queue depth)"]
                 ORC_SB["agent-orchestrator\n(SB consumer)"]
                 PPW["preprocessing-worker"]
-                NW["notification-worker"]
             end
 
             PG["PostgreSQL 15\n(container, min_replicas=1)\nAzure Files volume"]
@@ -694,9 +662,8 @@ graph TD
             BLOB["Azure Blob Storage\n(+ Azure Files for PostgreSQL)"]
             SB["Azure Service Bus"]
             ENTRA["Azure Entra External ID\n(magic link / JWT)"]
-            ACS["Azure Communication Services"]
             KV["Azure Key Vault\n(secret injection)"]
-            APPINS["Application Insights\n(dev + prod — one each)"]
+            APPINS["Application Insights\n(one per env)"]
         end
 
     end
@@ -727,20 +694,15 @@ graph TD
     BLOB --> SB
     SB --> PPW
     SB --> ORC_SB
-    SB --> NW
     PPW --> BLOB
     PPW --> PG
     PPW --> SB
     ORC_SB --> BLOB
     ORC_SB --> PG
     ORC_SB --> SB
-    NW <--> PG
-    NW --> ACS
-    NW --> FD
     KV -.->|"secret refs"| GW
     KV -.->|"secret refs"| ORC
     KV -.->|"secret refs"| ORC_SB
     KV -.->|"secret refs"| PPW
-    KV -.->|"secret refs"| NW
     APPINS -.->|"auto-instrumentation"| ACA
 ```

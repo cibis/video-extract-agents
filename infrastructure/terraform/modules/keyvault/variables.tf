@@ -31,11 +31,6 @@ variable "service_bus_connection_string" {
   sensitive = true
 }
 
-variable "acs_connection_string" {
-  type      = string
-  sensitive = true
-}
-
 variable "appinsights_connection_string" {
   type      = string
   sensitive = true

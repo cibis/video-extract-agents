@@ -127,17 +127,10 @@ variable "appinsights_connection_string" {
   default   = ""
 }
 
-variable "acs_connection_string" {
-  type        = string
-  sensitive   = true
-  default     = ""
-  description = "Azure Communication Services connection string for notification-worker"
-}
-
 variable "front_door_url" {
   type        = string
   default     = ""
-  description = "Azure Front Door endpoint hostname; injected as FRONT_DOOR_URL (api-gateway) and FRONT_DOOR_HOSTNAME (notification-worker)"
+  description = "Azure Front Door endpoint hostname; injected as FRONT_DOOR_URL into api-gateway"
 }
 
 variable "entra_tenant_id" {

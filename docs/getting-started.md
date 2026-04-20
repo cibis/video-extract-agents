@@ -212,25 +212,23 @@ cp scripts/credentials.sh.example scripts/credentials.sh
 # Edit scripts/credentials.sh — the filled-in copy is gitignored
 
 bash scripts/bootstrap-dev.sh    # provisions video-extract-dev
-bash scripts/bootstrap-prod.sh   # provisions video-extract-prod
 ```
 
-Both scripts:
-- Source `scripts/credentials.sh` for all Azure/Terraform credentials
+The bootstrap script:
+- Sources `scripts/credentials.sh` for all Azure/Terraform credentials
 - Phase 1: create ACR only (`-target=module.acr`)
-- Push placeholder images so container apps can be created immediately
+- Pushes placeholder images so container apps can be created immediately
 - Phase 2: full `terraform apply`
-- Log all Terraform output to `gitlab-logs/terraform/bootstrap-{dev|prod}-<timestamp>.log`
+- Logs all Terraform output to `gitlab-logs/terraform/bootstrap-dev-<timestamp>.log`
 
-This creates (per environment):
-- Resource group `video-extract-{dev|prod}`
-- Azure Container Registry (Basic for dev, Standard for prod)
-- Azure Container Apps environment + all 9 container apps
-- Blob Storage (LRS for dev, ZRS for prod)
-- Service Bus namespace (Standard for dev, Premium for prod) + 5 queues
+This creates:
+- Resource group `video-extract-dev`
+- Azure Container Registry (Basic)
+- Azure Container Apps environment + all 8 container apps
+- Blob Storage (LRS)
+- Service Bus namespace (Standard) + 3 queues
 - Application Insights
 - Azure Front Door (Standard)
-- Azure Communication Services
 - Azure Key Vault (secrets injected; purged immediately on destroy)
 
 **After bootstrap, get the UI URL:**
@@ -262,7 +260,6 @@ Or manually:
 cp backend/api-gateway/.env.example              backend/api-gateway/.env
 cp backend/agent-orchestrator/.env.example       backend/agent-orchestrator/.env
 cp backend/preprocessing-worker/.env.example     backend/preprocessing-worker/.env
-cp backend/notification-worker/.env.example      backend/notification-worker/.env
 cp mcp-servers/mcp-server-analysis/.env.example  mcp-servers/mcp-server-analysis/.env
 cp mcp-servers/mcp-server-processing/.env.example mcp-servers/mcp-server-processing/.env
 cp frontend/librechat/.env.example               frontend/librechat/.env
@@ -350,11 +347,6 @@ cd backend/preprocessing-worker
 poetry install
 poetry run pytest tests/unit/ -v
 
-# Notification Worker
-cd backend/notification-worker
-poetry install
-poetry run pytest tests/unit/ -v
-
 # MCP Server Analysis
 cd mcp-servers/mcp-server-analysis
 poetry install
@@ -397,10 +389,9 @@ After the bootstrap scripts provision the infrastructure (§7), the container ap
 placeholder images. The real application images are built and pushed by the GitLab CI pipeline.
 
 Push a commit to `main` (or trigger the pipeline manually in GitLab) — the pipeline will:
-1. Build all 8 Docker images tagged with the commit SHA
+1. Build all 7 Docker images tagged with the commit SHA
 2. Run tests against an ephemeral Azure test environment
 3. Push images to ACR and deploy to `video-extract-dev`
-4. (With manual approval) deploy to `video-extract-prod`
 
 ### 11.2 Initialise the Azure database
 
@@ -690,17 +681,6 @@ All variables are set in **Settings → CI/CD → Variables** (masked).
 | `SERVICE_BUS_CONNECTION_STRING` | Service Bus connection string |
 | `KEYFRAME_FPS` | Keyframe extraction rate (default: `1`) |
 
-### Notification Worker (`backend/notification-worker/.env`)
-
-| Variable | Description |
-|---|---|
-| `DATABASE_URL` | PostgreSQL asyncpg URL |
-| `SERVICE_BUS_CONNECTION_STRING` | Service Bus connection string |
-| `NOTIFICATION_MODE` | `stdout` locally; `acs` in CI/prod |
-| `AZURE_COMMUNICATION_SERVICES_CONNECTION_STRING` | ACS connection string (CI/prod) |
-| `NOTIFICATION_SENDER_EMAIL` | From address |
-| `FRONT_DOOR_HOSTNAME` | Azure Front Door endpoint hostname (CI/prod) |
-
 ### MCP Server Analysis (`mcp-servers/mcp-server-analysis/.env`)
 
 | Variable | Description |
@@ -820,7 +800,7 @@ docker compose logs -f api-gateway
 # Rebuild a single service
 docker compose up -d --build api-gateway
 
-# Run all unit tests
+# Run unit tests
 cd backend/api-gateway && npm test
 cd backend/agent-orchestrator && poetry run pytest tests/unit/
 

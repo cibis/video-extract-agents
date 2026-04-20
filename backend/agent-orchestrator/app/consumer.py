@@ -3,27 +3,11 @@ import asyncio
 import json
 import logging
 from azure.servicebus.aio import ServiceBusClient
-from azure.servicebus import ServiceBusMessage
 from app.config import settings
 from app.crew import run_crew
 from app.db import get_job, update_job_status
 
 logger = logging.getLogger(__name__)
-
-
-async def publish_job_result(status: str, payload: dict) -> None:
-    queue_name = "job-completed" if status == "completed" else "job-failed"
-    async with ServiceBusClient.from_connection_string(
-        settings.azure_service_bus_connection_string
-    ) as client:
-        sender = client.get_queue_sender(queue_name)
-        async with sender:
-            await sender.send_messages(
-                ServiceBusMessage(
-                    body=json.dumps(payload),
-                    content_type="application/json",
-                )
-            )
 
 
 async def process_job_message(message_body: dict) -> None:
@@ -74,9 +58,6 @@ async def process_job_message(message_body: dict) -> None:
 
     await update_job_status(job_id, "processing")
 
-    final_status = "failed"
-    final_output_url = None
-    final_error = None
     try:
         output_url = await run_crew(
             prompt=prompt,
@@ -87,29 +68,10 @@ async def process_job_message(message_body: dict) -> None:
             parent_job_id=parent_job_id,
         )
         await update_job_status(job_id, "completed", output_url=output_url)
-        final_status = "completed"
-        final_output_url = output_url
         logger.info("Job %s completed: %s", job_id, output_url)
     except Exception as exc:
         logger.error("Job %s failed: %s", job_id, exc)
         await update_job_status(job_id, "failed", error=str(exc))
-        final_error = str(exc)
-
-    # Publish result notification — failure must NOT propagate so the SB message
-    # is not abandoned (which would cause double-processing on redelivery).
-    try:
-        if final_status == "completed":
-            await publish_job_result(
-                "completed",
-                {"job_id": job_id, "user_id": user_id, "output_url": final_output_url, "session_id": session_id},
-            )
-        else:
-            await publish_job_result(
-                "failed",
-                {"job_id": job_id, "user_id": user_id, "error": final_error, "session_id": session_id},
-            )
-    except Exception as exc:
-        logger.warning("Could not publish job result for %s (non-fatal): %s", job_id, exc)
 
 
 async def _renew_lock(receiver, msg, interval: int = 45) -> None:

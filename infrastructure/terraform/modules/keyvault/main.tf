@@ -51,12 +51,6 @@ resource "azurerm_key_vault_secret" "service_bus_connection_string" {
   key_vault_id = azurerm_key_vault.main.id
 }
 
-resource "azurerm_key_vault_secret" "acs_connection_string" {
-  name         = "acs-connection-string"
-  value        = var.acs_connection_string
-  key_vault_id = azurerm_key_vault.main.id
-}
-
 resource "azurerm_key_vault_secret" "appinsights_connection_string" {
   count        = var.create_appinsights_secret ? 1 : 0
   name         = "appinsights-connection-string"

@@ -57,7 +57,7 @@ resource "azurerm_servicebus_namespace" "main" {
 }
 
 resource "azurerm_servicebus_queue" "queues" {
-  for_each           = toset(["video-uploaded", "video-indexed", "job-queued", "job-completed", "job-failed"])
+  for_each           = toset(["video-uploaded", "video-indexed", "job-queued"])
   name               = each.key
   namespace_id       = azurerm_servicebus_namespace.main.id
   max_delivery_count = 10
@@ -69,13 +69,6 @@ module "acr" {
   location            = var.location
   environment         = local.environment
   sku                 = "Standard"
-  tags                = local.tags
-}
-
-module "appcommunication" {
-  source              = "../../modules/appcommunication"
-  resource_group_name = azurerm_resource_group.main.name
-  environment         = local.environment
   tags                = local.tags
 }
 
@@ -105,7 +98,6 @@ module "aca" {
   aws_secret_access_key         = var.aws_secret_access_key
   aws_region_name               = var.aws_region_name
   appinsights_connection_string = module.appinsights.connection_string
-  acs_connection_string         = module.appcommunication.primary_connection_string
   front_door_url                = module.frontdoor.endpoint_hostname
   entra_tenant_id               = var.entra_tenant_id
   entra_client_id               = var.entra_client_id
@@ -147,7 +139,6 @@ module "keyvault" {
   db_admin_password             = var.db_admin_password
   storage_connection_string     = module.storage.primary_connection_string
   service_bus_connection_string = azurerm_servicebus_namespace.main.default_primary_connection_string
-  acs_connection_string         = module.appcommunication.primary_connection_string
   appinsights_connection_string = module.appinsights.connection_string
   tags                          = local.tags
 }

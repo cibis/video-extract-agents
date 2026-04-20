@@ -1,19 +1,18 @@
 #!/usr/bin/env bash
 # scripts/teardown.sh
 #
-# Destroys the dev and/or prod Terraform-managed environments.
+# Destroys the dev Terraform-managed environment.
 #
-# What it destroys (per environment):
-#   - Resource group (video-extract-dev / video-extract-prod) and everything in it:
-#       Azure Container Apps environment + all 9 container apps (incl. PostgreSQL)
+# What it destroys:
+#   - Resource group (video-extract-dev) and everything in it:
+#       Azure Container Apps environment + all 8 container apps (incl. PostgreSQL)
 #       PostgreSQL data (Azure Files volume)
 #       Blob Storage account (all uploaded videos, keyframes, outputs, assets)
 #       Service Bus namespace and all queues
 #       Azure Container Registry and all Docker images
 #       Application Insights + Log Analytics workspace
 #       Azure Front Door CDN profile
-#       Azure Communication Services
-#       Key Vault (soft-deleted — see prod note below)
+#       Key Vault (soft-deleted)
 #
 # What it does NOT destroy (one-time manual setup from getting-started.md §5–6):
 #   - Terraform state storage (getting-started.md §5.1):
@@ -26,9 +25,7 @@
 #       Magic link user flow
 #
 # Usage:
-#   scripts/teardown.sh              # destroys both dev and prod (prompts for each)
-#   scripts/teardown.sh --dev        # destroys dev only
-#   scripts/teardown.sh --prod       # destroys prod only
+#   scripts/teardown.sh
 #
 # Credentials are pre-filled below (file is gitignored — never commit).
 # Override any value by exporting the variable before running.
@@ -44,28 +41,6 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # shellcheck source=credentials.sh
 source "$(dirname "${BASH_SOURCE[0]}")/credentials.sh"
-
-# ─── Argument parsing ─────────────────────────────────────────────────────────
-
-DESTROY_DEV=false
-DESTROY_PROD=false
-
-if [ $# -eq 0 ]; then
-  DESTROY_DEV=true
-  DESTROY_PROD=true
-else
-  for arg in "$@"; do
-    case $arg in
-      --dev)  DESTROY_DEV=true ;;
-      --prod) DESTROY_PROD=true ;;
-      *)
-        echo "Unknown argument: $arg"
-        echo "Usage: $0 [--dev] [--prod]   (default: both)"
-        exit 1
-        ;;
-    esac
-  done
-fi
 
 # ─── Auth — map AZURE_* → ARM_* (mirrors .gitlab-ci.yml &terraform-setup) ────
 
@@ -98,28 +73,16 @@ destroy_env() {
   echo "══════════════════════════════════════════════════════════════════════"
   echo ""
   echo "  This will permanently delete:"
-  echo "    • All Azure Container Apps (9 services including PostgreSQL)"
+  echo "    • All Azure Container Apps (8 services including PostgreSQL)"
   echo "    • All PostgreSQL data (Azure Files volume)"
   echo "    • Blob Storage account and all data (videos, keyframes, outputs)"
-  echo "    • Service Bus namespace and all 5 queues"
+  echo "    • Service Bus namespace and all queues"
   echo "    • Azure Container Registry and all Docker images"
   echo "    • Application Insights + Log Analytics workspace"
   echo "    • Azure Front Door CDN profile"
-  echo "    • Azure Communication Services"
   echo "    • Key Vault (see soft-delete note below)"
   echo "    • Resource group $rg"
   echo ""
-
-  if [ "$env" = "prod" ]; then
-    echo "  ┌─ PRODUCTION WARNING ─────────────────────────────────────────────┐"
-    echo "  │                                                                    │"
-    echo "  │  This will permanently delete all production data including       │"
-    echo "  │  PostgreSQL data, all uploaded videos, and all output files.      │"
-    echo "  │  There is no undo.                                                 │"
-    echo "  │                                                                    │"
-    echo "  └────────────────────────────────────────────────────────────────────┘"
-    echo ""
-  fi
 
   echo ""
   echo "  Initialising Terraform..."
@@ -139,8 +102,7 @@ destroy_env() {
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
-$DESTROY_DEV  && destroy_env dev
-$DESTROY_PROD && destroy_env prod
+destroy_env dev
 
 echo ""
 echo "══════════════════════════════════════════════════════════════════════"

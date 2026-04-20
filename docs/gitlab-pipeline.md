@@ -44,9 +44,6 @@ This document explains the CI/CD pipeline in detail — every stage, every job, 
   - [Step 2 — Verify `push_to_acr`](#step-2-verify-push_to_acr)
   - [Step 3 — Monitor `deploy_dev`](#step-3-monitor-deploy_dev)
   - [Step 4 — Smoke test dev](#step-4-smoke-test-dev)
-  - [Step 5 — Trigger `manual_approval`](#step-5-trigger-manual_approval)
-  - [Step 6 — Monitor `deploy_prod`](#step-6-monitor-deploy_prod)
-  - [Step 7 — Post-deployment verification (prod)](#step-7-post-deployment-verification-prod)
   - [Quick-reference: full release command sequence](#quick-reference-full-release-command-sequence)
 
 ---
@@ -63,7 +60,7 @@ push to any branch
        │
        ▼
 ┌─────────────────┐
-│  build_images   │  Docker build + push to ACR (8 images, tagged with commit SHA)
+│  build_images   │  Docker build + push to ACR (7 images, tagged with commit SHA)
 └────────┬────────┘
          │
          ▼
@@ -109,7 +106,7 @@ push to any branch
          │
          ▼
 ┌─────────────┐
-│ deploy_prod │  az containerapp update → video-extract-prod
+│ deploy_prod │  placeholder — production deployment not yet configured
 └─────────────┘
 ```
 
@@ -211,13 +208,12 @@ docker push "$ACR_REGISTRY/<service>:$IMAGE_TAG"
 | `build:api-gateway` | `backend/api-gateway/` | `api-gateway` |
 | `build:agent-orchestrator` | `backend/agent-orchestrator/` | `agent-orchestrator` |
 | `build:preprocessing-worker` | `backend/preprocessing-worker/` | `preprocessing-worker` |
-| `build:notification-worker` | `backend/notification-worker/` | `notification-worker` |
 | `build:mcp-server-analysis` | `mcp-servers/mcp-server-analysis/` | `mcp-server-analysis` |
 | `build:mcp-server-processing` | `mcp-servers/mcp-server-processing/` | `mcp-server-processing` |
 | `build:angular-shell` | `frontend/angular-shell/` | `angular-shell` |
 | `build:librechat` | `frontend/librechat/` | `librechat` |
 
-After this stage, all 8 images are in ACR tagged with the commit SHA. They are not yet tagged `:latest`.
+After this stage, all 7 images are in ACR tagged with the commit SHA. They are not yet tagged `:latest`.
 
 > **Note on the ACR used here:** These images are pushed to the production ACR (`videoextractdevacr` or `videoextractprodacr`). The test environment pulls from the same registry — there is no separate test registry.
 
@@ -247,12 +243,11 @@ A full isolated environment named `video-extract-test-{CI_PIPELINE_ID}`:
 | Storage Container | `videos` |
 | PostgreSQL (ACA container, Azure Files) | `postgresql` container app inside the ACA environment |
 | Service Bus Namespace | `ve-test-{pipeline_id}-sb` |
-| Service Bus Queues | `video-uploaded`, `video-indexed`, `job-queued`, `job-completed`, `job-failed` |
+| Service Bus Queues | `video-uploaded`, `video-indexed`, `job-queued` |
 | Container Registry | `videoextracttest{pipeline_id}acr` |
 | ACA Environment | `videoextract-test-{pipeline_id}-cae` |
 | Log Analytics Workspace | `videoextract-test-{pipeline_id}-law` |
-| Container Apps (9) | `postgresql`, `api-gateway`, `agent-orchestrator`, `preprocessing-worker`, `notification-worker`, `mcp-server-analysis`, `mcp-server-processing`, `angular-shell`, `librechat` |
-| ACS | `videoextract-test-{pipeline_id}-acs` |
+| Container Apps (8) | `postgresql`, `api-gateway`, `agent-orchestrator`, `preprocessing-worker`, `mcp-server-analysis`, `mcp-server-processing`, `angular-shell`, `librechat` |
 
 Resources **not** created in the test environment:
 - Application Insights (too expensive; `appinsights_connection_string = ""`)
@@ -271,7 +266,7 @@ Resources **not** created in the test environment:
 - **Uses:** `&azure-login` template
 
 ```bash
-SERVICES=(api-gateway agent-orchestrator preprocessing-worker notification-worker
+SERVICES=(api-gateway agent-orchestrator preprocessing-worker
           mcp-server-analysis mcp-server-processing angular-shell librechat)
 RG="video-extract-test-${CI_PIPELINE_ID}"
 
@@ -353,15 +348,14 @@ ci-logs/
   api-gateway.log            stdout/stderr, last 2000 lines
   agent-orchestrator.log
   preprocessing-worker.log
-  notification-worker.log
   mcp-server-analysis.log
   mcp-server-processing.log
   angular-shell.log
   librechat.log
   postgresql.log
-  aca-status.log             provisioning state + replica list for all 9 container apps
+  aca-status.log             provisioning state + replica list for all 8 container apps
   rg-resources.log           full resource group inventory (all Azure resources)
-  servicebus.log             queue depths + dead-letter counts for all 5 queues
+  servicebus.log             queue depths + dead-letter counts for all 3 queues
 ```
 
 #### How it works
@@ -498,7 +492,7 @@ for svc in "${SERVICES[@]}"; do
 done
 ```
 
-Updates all 8 container apps in the **persistent `video-extract-dev`** resource group to the new image. ACA performs a rolling update — the old revision stays alive until the new one passes its health check.
+Updates all 7 container apps in the **persistent `video-extract-dev`** resource group to the new image. ACA performs a rolling update — the old revision stays alive until the new one passes its health check.
 
 After all containers are updated, the job starts the `db-init` ACA job and polls until it succeeds. This ensures schema migrations are applied on every deploy, not just on initial provisioning. The pipeline fails if `db-init` reports a failure.
 
@@ -530,21 +524,14 @@ This is the production gate. The expectation is that someone has:
 
 **Only runs on `main` branch. Requires `manual_approval` to complete first.**
 
-- **Image:** `mcr.microsoft.com/azure-cli:latest`
-- **Uses:** `&azure-login` template
-- **GitLab environment:** `prod`
+- **Image:** `alpine:latest`
 - **`needs: [manual_approval]`** — explicit job dependency
 
 ```bash
-for svc in "${SERVICES[@]}"; do
-  az containerapp update \
-    --name "$svc" \
-    --resource-group "video-extract-prod" \
-    --image "$ACR_REGISTRY/$svc:$IMAGE_TAG"
-done
+echo "Production deployment not yet configured — placeholder"
 ```
 
-Identical to `deploy_dev` but targets `video-extract-prod`. Runs `db-init` after the container update loop. ACA rolls out the new revision.
+This is a placeholder job. The `video-extract-prod` environment is not currently provisioned or deployed. The stage exists as a gate so the pipeline structure is preserved for future activation.
 
 ---
 
@@ -554,7 +541,7 @@ Identical to `deploy_dev` but targets `video-extract-prod`. Runs `db-init` after
 |---|---|---|---|---|
 | **Ephemeral test** | `video-extract-test-{pipeline_id}` | `aca_test_env_create` | `aca_test_env_destroy` | Single pipeline run (~30–60 min) |
 | **Dev** | `video-extract-dev` | Terraform (manual first run) | Manual only | Persistent |
-| **Prod** | `video-extract-prod` | Terraform (manual first run) | Manual only | Persistent |
+| **Prod** | `video-extract-prod` | Not provisioned | — | Not yet active — `deploy_prod` is a placeholder |
 
 The ephemeral test environment is the key architectural decision — every pipeline run gets a completely fresh, isolated Azure environment. There is no shared test environment that accumulates state or has contention between concurrent pipelines.
 
@@ -767,7 +754,7 @@ az group delete \
 
 ## Completing a Release — Step-by-Step
 
-This section is the human-side runbook for everything from `push_to_acr` onward. Stages 1–7 are fully automated; stages 8–11 require monitoring, smoke testing, and a deliberate approval gate.
+This section is the human-side runbook for everything from `push_to_acr` onward. Stages 1–7 are fully automated; stages 8–10 require monitoring and smoke testing. Stage 11 (`deploy_prod`) is a placeholder — production deployment is not yet configured.
 
 ---
 
@@ -836,10 +823,10 @@ This stage runs automatically after `aca_test_env_destroy` completes on `main`. 
 
 In the GitLab pipeline view, click the `push_to_acr` job and confirm all 8 `docker push` commands completed with `latest: digest: sha256:...`.
 
-Or via the Azure CLI — check all 8 services at once:
+Or via the Azure CLI — check all 7 services at once:
 ```bash
 ACR=videoextractdevacr   # replace with your ACR name
-for svc in api-gateway agent-orchestrator preprocessing-worker notification-worker \
+for svc in api-gateway agent-orchestrator preprocessing-worker \
            mcp-server-analysis mcp-server-processing angular-shell librechat; do
   echo "=== $svc ==="
   az acr repository show-tags \
@@ -879,10 +866,10 @@ api-gateway--<old-sha>       False     0                Succeeded            Sto
 api-gateway--<new-sha>       True      100              Succeeded            Running
 ```
 
-To check all 8 services at once (one-shot snapshot):
+To check all 7 services at once (one-shot snapshot):
 
 ```bash
-for svc in api-gateway agent-orchestrator preprocessing-worker notification-worker \
+for svc in api-gateway agent-orchestrator preprocessing-worker \
            mcp-server-analysis mcp-server-processing angular-shell librechat; do
   echo "=== $svc ==="
   az containerapp revision list --name $svc --resource-group video-extract-dev --output table
@@ -911,7 +898,7 @@ Before approving production deployment, verify the key surfaces on dev.
 scripts/smoke-test.sh dev
 ```
 
-Checks: API Gateway `/health` → `{"status":"ok","db":"ok"}`, MCP tool catalogue (≥8 analysis tools, ≥4 processing tools), all 5 Service Bus queues have 0 dead-letter messages, all 8 container apps have ≥1 running replica. Exit code 0 = healthy.
+Checks: API Gateway `/health` → `{"status":"ok","db":"ok"}`, MCP tool catalogue (≥8 analysis tools, ≥4 processing tools), all 3 Service Bus queues have 0 dead-letter messages, all 7 container apps have ≥1 running replica. Exit code 0 = healthy.
 
 **Manual checks** (not covered by the script):
 
@@ -920,92 +907,15 @@ Checks: API Gateway `/health` → `{"status":"ok","db":"ok"}`, MCP tool catalogu
 - **Submit a job** via the LibreChat chat interface and confirm:
   - Job progresses `queued` → `running` → `completed`, output URL is reachable
 
-If any check fails, **do not approve production**. Fix forward by pushing another commit to `main` or roll back dev from the Environments page (see "Rolling Back" section).
+If any check fails, fix forward by pushing another commit to `main` or roll back dev from the Environments page (see "Rolling Back" section).
 
----
-
-### Step 5 — Trigger `manual_approval`
-
-Once dev looks healthy, approve the production gate.
-
-**Via the GitLab UI:**
-
-1. Go to **GitLab → CI/CD → Pipelines**
-2. Find the pipeline on `main` that deployed to dev (it will show a ⏸ paused icon next to `manual_approval`)
-3. Click the pipeline to open the pipeline graph
-4. Click the **▶ play button** next to `manual_approval`
-5. Confirm in the dialog — `deploy_prod` starts immediately
-
-**Via the `glab` CLI:**
-
-```bash
-# List pipeline jobs to get the job ID for manual_approval
-glab ci status
-
-# Trigger the manual job by name
-glab ci run manual_approval
-```
-
-**Via the GitLab API:**
-
-```bash
-# Get the job ID:
-curl --header "PRIVATE-TOKEN: <your-token>" \
-  "https://gitlab.com/<group>/<project>/api/v4/pipelines/<pipeline_id>/jobs" \
-  | jq '.[] | select(.name=="manual_approval") | .id'
-
-# Trigger it:
-curl --request POST --header "PRIVATE-TOKEN: <your-token>" \
-  "https://gitlab.com/<group>/<project>/api/v4/jobs/<job_id>/play"
-```
-
----
-
-### Step 6 — Monitor `deploy_prod`
-
-Identical to the dev rollout but targeting `video-extract-prod`. ACA rolls out the new revision with zero-downtime traffic shifting.
-
-**Watch the rollout:**
-
-```bash
-watch -n 5 'az containerapp revision list \
-  --name api-gateway \
-  --resource-group video-extract-prod \
-  --output table'
-```
-
-**Monitor Application Insights for errors** immediately after rollout:
-
-```bash
-az monitor app-insights query \
-  --app ve-prod-appinsights \
-  --resource-group video-extract-prod \
-  --analytics-query "exceptions | where timestamp > ago(15m) | summarize count() by type | order by count_ desc" \
-  --offset 15M \
-  --output table
-```
-
-Wait 5–10 minutes after the rollout completes and confirm error rate has not increased before considering the release done.
-
----
-
-### Step 7 — Post-deployment verification (prod)
-
-Run the smoke test script against the live production environment:
-
-```bash
-scripts/smoke-test.sh prod
-```
-
-Wait 5–10 minutes after the rollout completes and confirm the script exits 0 before considering the release done.
-
-**If production is degraded after deployment**, see "Rolling Back a Production Deployment" in the SDLC section above.
+After verifying dev, you may trigger `manual_approval` in the GitLab pipeline UI to allow the placeholder `deploy_prod` job to complete. Production deployment is not yet active.
 
 ---
 
 ### Quick-reference: full release command sequence
 
-For a complete, healthy release from merge to prod verification:
+For a complete, healthy release from merge to dev verification:
 
 ```bash
 # After merge to main — wait for pipeline stages 1–7 to complete, then:
@@ -1018,13 +928,4 @@ az containerapp revision list --name api-gateway --resource-group video-extract-
 
 # 3. Smoke-test dev (health, tool catalogue, service bus dead-letters, replica state)
 scripts/smoke-test.sh dev
-
-# 4. Approve production deployment (GitLab UI or glab CLI)
-glab ci run manual_approval
-
-# 5. Wait for prod rollout
-az containerapp revision list --name api-gateway --resource-group video-extract-prod --output table
-
-# 6. Smoke-test prod
-scripts/smoke-test.sh prod
 ```

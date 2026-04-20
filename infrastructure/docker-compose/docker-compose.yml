@@ -255,25 +255,6 @@ services:
     networks:
       - video-extract-network
 
-  notification-worker:
-    build:
-      context: ../../backend/notification-worker
-      dockerfile: Dockerfile
-    environment:
-      <<: *common-python-env
-      NOTIFICATION_MODE: stdout
-      AZURE_COMMUNICATION_SERVICES_CONNECTION_STRING: ""
-      FRONT_DOOR_ENDPOINT: ""
-      FRONT_DOOR_SECRET: ""
-      SENDER_EMAIL: noreply@video-extract.local
-    depends_on:
-      postgresql:
-        condition: service_healthy
-      servicebus-emulator:
-        condition: service_started
-    networks:
-      - video-extract-network
-
   mcp-server-analysis:
     build:
       context: ../../mcp-servers/mcp-server-analysis
@@ -346,6 +327,8 @@ services:
       AZURE_ENTRA_TENANT_ID: ${AZURE_ENTRA_TENANT_ID:-}
       APP_BASE_URL: ${APP_BASE_URL:-http://localhost:4200}
       LOCAL_DEV_SKIP_AUTH: ${LOCAL_DEV_SKIP_AUTH:-true}
+      API_GATEWAY_URL: http://api-gateway:8000
+      LIBRECHAT_URL: http://librechat:3080
     depends_on:
       api-gateway:
         condition: service_healthy

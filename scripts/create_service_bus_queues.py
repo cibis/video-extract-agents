@@ -14,8 +14,6 @@ QUEUES = [
     "video-uploaded",
     "video-indexed",
     "job-queued",
-    "job-completed",
-    "job-failed",
 ]
 
 
