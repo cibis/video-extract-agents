@@ -10,6 +10,7 @@ export interface AuthenticatedUser {
 }
 
 declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Express {
     interface Request {
       user?: AuthenticatedUser;
@@ -75,7 +76,7 @@ export async function authMiddleware(
       }
       req.user = user;
       return next();
-    } catch (err) {
+    } catch (_err) {
       res.status(500).json({ error: 'User lookup failed' });
       return;
     }

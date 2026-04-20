@@ -567,7 +567,7 @@ export async function deleteTestSessions(userId: string): Promise<number> {
     `DELETE FROM sessions WHERE user_id = $1 AND is_test = TRUE`,
     [userId],
   );
-  return (result as any).rowCount ?? 0;
+  return result.rowCount ?? 0;
 }
 
 export async function listAllSessionBlobs(userId: string): Promise<{
@@ -629,7 +629,7 @@ export async function deleteAllSessions(userId: string): Promise<number> {
   await pool.query(`DELETE FROM videos WHERE user_id = $1`, [userId]);
   // Delete sessions by user_id (cascades session_assets)
   const sessionsResult = await pool.query(`DELETE FROM sessions WHERE user_id = $1`, [userId]);
-  return ((sessionsResult as any).rowCount ?? 0) + ((jobsResult as any).rowCount ?? 0);
+  return (sessionsResult.rowCount ?? 0) + (jobsResult.rowCount ?? 0);
 }
 
 // ─── Videos ───────────────────────────────────────────────────────────────────

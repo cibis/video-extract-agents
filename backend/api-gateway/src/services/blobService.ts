@@ -3,8 +3,6 @@ import path from 'path';
 import {
   BlobServiceClient,
   BlobSASPermissions,
-  generateBlobSASQueryParameters,
-  StorageSharedKeyCredential,
   SASProtocol,
 } from '@azure/storage-blob';
 import { config } from '../config';

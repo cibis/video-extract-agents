@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import { createJob, updateJobPrompt, getJobById, getJobOutputs, listJobsForUser, getJobLogs, getJobLogsSince, getJobStepsSince, getJobSteps, ensureSessionExists, getToolProgressSince } from '../services/dbService';
+import { createJob, getJobById, getJobOutputs, listJobsForUser, getJobLogs, getJobLogsSince, getJobStepsSince, getJobSteps, ensureSessionExists, getToolProgressSince } from '../services/dbService';
 import { publishJobQueued } from '../services/serviceBusService';
 import { generateSignedDownloadUrl } from '../services/blobService';
 

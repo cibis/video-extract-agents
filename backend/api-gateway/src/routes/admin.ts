@@ -81,7 +81,7 @@ adminRouter.delete('/wipe-test-data', async (req, res, next) => {
 adminRouter.delete('/wipe-all-data', async (req, res, next) => {
   try {
     const userId = req.user!.id;
-    const { sessionIds, blobUrls, blobPrefixes } = await listAllSessionBlobs(userId);
+    const { blobUrls, blobPrefixes } = await listAllSessionBlobs(userId);
 
     const blobsDeleted = await wipeBlobs(blobUrls, blobPrefixes);
     const sessionsDeleted = await deleteAllSessions(userId);
