@@ -1,14 +1,12 @@
 #!/bin/sh
 set -e
 
-# Detect the DNS nameserver from /etc/resolv.conf so nginx can re-resolve
-# upstream hostnames dynamically. Works in Docker Compose (127.0.0.11) and ACA.
-NGINX_RESOLVER=$(grep nameserver /etc/resolv.conf | awk 'NR==1{print $2}')
-export NGINX_RESOLVER
-
-# Generate final nginx config from template, substituting upstream URLs and resolver.
+# Generate final nginx config from template, substituting upstream URLs.
 # Scoped substitution leaves nginx's own $host, $remote_addr etc. untouched.
-envsubst '${NGINX_RESOLVER}${API_GATEWAY_URL}${LIBRECHAT_URL}' \
+# Values differ per environment:
+#   Docker Compose: API_GATEWAY_URL=http://api-gateway:8000, LIBRECHAT_URL=http://librechat:3080
+#   ACA:            API_GATEWAY_URL=http://api-gateway,      LIBRECHAT_URL=http://librechat
+envsubst '${API_GATEWAY_URL}${LIBRECHAT_URL}' \
   < /etc/nginx/conf.d/default.conf.template \
   > /etc/nginx/conf.d/default.conf
 
