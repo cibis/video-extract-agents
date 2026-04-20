@@ -78,3 +78,39 @@ variable "app_base_url" {
   type    = string
   default = ""
 }
+
+# LibreChat secrets — inject via TF_VAR_* in CI (GitLab CI/CD variables)
+variable "librechat_creds_key" {
+  type      = string
+  sensitive = true
+  default   = ""
+}
+
+variable "librechat_creds_iv" {
+  type      = string
+  sensitive = true
+  default   = ""
+}
+
+variable "librechat_jwt_secret" {
+  type      = string
+  sensitive = true
+  default   = ""
+}
+
+variable "librechat_jwt_refresh_secret" {
+  type      = string
+  sensitive = true
+  default   = ""
+}
+
+variable "librechat_secret_key" {
+  type      = string
+  sensitive = true
+  default   = ""
+}
+
+variable "librechat_agent_api_key" {
+  type    = string
+  default = "dev-key"
+}

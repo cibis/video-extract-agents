@@ -99,6 +99,12 @@ module "aca" {
   entra_tenant_id               = var.entra_tenant_id
   entra_client_id               = var.entra_client_id
   app_base_url                  = var.app_base_url
+  librechat_creds_key           = var.librechat_creds_key
+  librechat_creds_iv            = var.librechat_creds_iv
+  librechat_jwt_secret          = var.librechat_jwt_secret
+  librechat_jwt_refresh_secret  = var.librechat_jwt_refresh_secret
+  librechat_secret_key          = var.librechat_secret_key
+  librechat_agent_api_key       = var.librechat_agent_api_key
   min_replicas                  = 0
   max_replicas                  = 5
   postgres_persistent_volume    = false

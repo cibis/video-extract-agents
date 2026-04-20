@@ -35,11 +35,16 @@ ORC_FQDN=$(get_fqdn agent-orchestrator)
 MCA_FQDN=$(get_fqdn mcp-server-analysis)
 MCP_FQDN=$(get_fqdn mcp-server-processing)
 
+# Returns true if FQDN is ACA-internal only (not reachable from outside the environment).
+is_internal_fqdn() { [[ "$1" == *".internal."* ]]; }
+
 # ── API Gateway ────────────────────────────────────────────────────────────────
 echo ""
 echo "--- API Gateway ---"
 if [[ -z "$GW_FQDN" ]]; then
   fail "api-gateway reachable" "could not resolve FQDN from $RG"
+elif is_internal_fqdn "$GW_FQDN"; then
+  pass "api-gateway /health — internal service, skipping external check (replica count checked below)"
 else
   HEALTH=$(curl -sf --max-time 10 "https://$GW_FQDN/health" 2>/dev/null || echo "{}")
   GW_STATUS=$(echo "$HEALTH" | jq -r '.status // "missing"' 2>/dev/null || echo "parse error")
@@ -52,6 +57,8 @@ echo ""
 echo "--- Agent Orchestrator ---"
 if [[ -z "$ORC_FQDN" ]]; then
   fail "agent-orchestrator reachable" "could not resolve FQDN from $RG"
+elif is_internal_fqdn "$ORC_FQDN"; then
+  pass "agent-orchestrator /health — internal service, skipping external check (replica count checked below)"
 else
   HEALTH=$(curl -sf --max-time 10 "https://$ORC_FQDN/health" 2>/dev/null || echo "{}")
   ORC_STATUS=$(echo "$HEALTH" | jq -r '.status // "missing"' 2>/dev/null || echo "parse error")
@@ -64,6 +71,8 @@ echo ""
 echo "--- MCP Server Analysis ---"
 if [[ -z "$MCA_FQDN" ]]; then
   fail "mcp-server-analysis reachable" "could not resolve FQDN from $RG"
+elif is_internal_fqdn "$MCA_FQDN"; then
+  pass "mcp-server-analysis /tools — internal service, skipping external check (replica count checked below)"
 else
   TOOL_COUNT=$(curl -sf --max-time 15 "https://$MCA_FQDN/tools" 2>/dev/null \
     | jq 'length' 2>/dev/null || echo 0)
@@ -76,6 +85,8 @@ echo ""
 echo "--- MCP Server Processing ---"
 if [[ -z "$MCP_FQDN" ]]; then
   fail "mcp-server-processing reachable" "could not resolve FQDN from $RG"
+elif is_internal_fqdn "$MCP_FQDN"; then
+  pass "mcp-server-processing /tools — internal service, skipping external check (replica count checked below)"
 else
   TOOL_COUNT=$(curl -sf --max-time 15 "https://$MCP_FQDN/tools" 2>/dev/null \
     | jq 'length' 2>/dev/null || echo 0)

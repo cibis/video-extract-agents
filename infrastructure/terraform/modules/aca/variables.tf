@@ -179,6 +179,47 @@ variable "app_base_url" {
   description = "Public base URL of the Angular shell (used as MSAL redirectUri)"
 }
 
+variable "librechat_creds_key" {
+  type        = string
+  sensitive   = true
+  default     = ""
+  description = "64 hex-char (32-byte) AES key for LibreChat credential encryption. Inject via TF_VAR_librechat_creds_key in CI."
+}
+
+variable "librechat_creds_iv" {
+  type        = string
+  sensitive   = true
+  default     = ""
+  description = "32 hex-char (16-byte) AES IV for LibreChat credential encryption. Inject via TF_VAR_librechat_creds_iv in CI."
+}
+
+variable "librechat_jwt_secret" {
+  type        = string
+  sensitive   = true
+  default     = ""
+  description = "JWT signing secret for LibreChat sessions. Inject via TF_VAR_librechat_jwt_secret in CI."
+}
+
+variable "librechat_jwt_refresh_secret" {
+  type        = string
+  sensitive   = true
+  default     = ""
+  description = "JWT refresh-token signing secret for LibreChat. Inject via TF_VAR_librechat_jwt_refresh_secret in CI."
+}
+
+variable "librechat_secret_key" {
+  type        = string
+  sensitive   = true
+  default     = ""
+  description = "General application secret for LibreChat. Inject via TF_VAR_librechat_secret_key in CI."
+}
+
+variable "librechat_agent_api_key" {
+  type        = string
+  default     = "dev-key"
+  description = "Placeholder API key used by LibreChat's custom endpoint config."
+}
+
 variable "tags" {
   type    = map(string)
   default = {}

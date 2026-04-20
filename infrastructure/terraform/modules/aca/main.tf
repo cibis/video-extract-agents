@@ -600,6 +600,47 @@ resource "azurerm_container_app" "angular_shell" {
   }
 }
 
+# ─── MongoDB (used by LibreChat for conversation history) ─────────────────────
+
+resource "azurerm_container_app" "mongo" {
+  name                         = "mongo"
+  container_app_environment_id = azurerm_container_app_environment.main.id
+  resource_group_name          = var.resource_group_name
+  revision_mode                = "Single"
+  tags                         = var.tags
+
+  template {
+    min_replicas = 1
+    max_replicas = 1
+
+    container {
+      name   = "mongo"
+      image  = "mongo:7"
+      cpu    = 0.5
+      memory = "1Gi"
+
+      liveness_probe {
+        transport = "TCP"
+        port      = 27017
+      }
+      readiness_probe {
+        transport = "TCP"
+        port      = 27017
+      }
+    }
+  }
+
+  ingress {
+    external_enabled = false
+    target_port      = 27017
+    transport        = "tcp"
+    traffic_weight {
+      latest_revision = true
+      percentage      = 100
+    }
+  }
+}
+
 # ─── LibreChat ────────────────────────────────────────────────────────────────
 
 resource "azurerm_container_app" "librechat" {
@@ -631,8 +672,56 @@ resource "azurerm_container_app" "librechat" {
       memory = "1.5Gi"
 
       env {
+        name  = "HOST"
+        value = "0.0.0.0"
+      }
+      env {
+        name  = "TZ"
+        value = "UTC"
+      }
+      env {
         name  = "API_GATEWAY_URL"
         value = "http://api-gateway"
+      }
+      env {
+        name  = "MONGO_URI"
+        value = "mongodb://mongo:27017/LibreChat"
+      }
+      env {
+        name  = "ANGULAR_ORIGIN"
+        value = var.app_base_url
+      }
+      env {
+        name  = "ALLOW_REGISTRATION"
+        value = "true"
+      }
+      env {
+        name  = "ALLOW_UNVERIFIED_EMAIL"
+        value = "true"
+      }
+      env {
+        name  = "CREDS_KEY"
+        value = var.librechat_creds_key
+      }
+      env {
+        name  = "CREDS_IV"
+        value = var.librechat_creds_iv
+      }
+      env {
+        name  = "JWT_SECRET"
+        value = var.librechat_jwt_secret
+      }
+      env {
+        name  = "JWT_REFRESH_SECRET"
+        value = var.librechat_jwt_refresh_secret
+      }
+      env {
+        name  = "LIBRECHAT_SECRET_KEY"
+        value = var.librechat_secret_key
+      }
+      env {
+        name  = "AGENT_API_KEY"
+        value = var.librechat_agent_api_key
       }
       env {
         name  = "APPLICATIONINSIGHTS_CONNECTION_STRING"
@@ -655,6 +744,8 @@ resource "azurerm_container_app" "librechat" {
       latest_revision = true
     }
   }
+
+  depends_on = [azurerm_container_app.mongo]
 }
 
 # ─── DB Init Job ──────────────────────────────────────────────────────────────
