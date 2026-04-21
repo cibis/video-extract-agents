@@ -191,6 +191,10 @@ resource "azurerm_container_app" "api_gateway" {
         value = var.local_dev_skip_auth ? "true" : ""
       }
       env {
+        name  = "AGENT_API_KEY"
+        value = var.librechat_agent_api_key
+      }
+      env {
         name  = "APPLICATIONINSIGHTS_CONNECTION_STRING"
         value = var.appinsights_connection_string
       }
