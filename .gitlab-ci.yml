@@ -1,0 +1,523 @@
+---
+# Video Extract Platform — GitLab CI/CD Pipeline
+# Stages: lint → build_images → aca_test_env_create → deploy_test_services →
+#         e2e_tests → collect_e2e_logs → aca_test_env_destroy → push_to_acr →
+#         deploy_dev → manual_approval → deploy_prod (placeholder)
+# TGP-1
+
+stages:
+  - lint
+  - build_images
+  - build_analysis
+  - aca_test_env_create
+  - deploy_test_services
+  - e2e_tests
+  - collect_e2e_logs
+  - aca_test_env_destroy
+  - push_to_acr
+  - deploy_dev
+  - manual_approval
+  - deploy_prod
+
+variables:
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: "/certs"
+  DOCKER_BUILDKIT: "1"
+  BUILDX_NO_DEFAULT_ATTESTATIONS: "1"
+  IMAGE_TAG: ${CI_COMMIT_SHORT_SHA}
+  TF_DIR: infrastructure/terraform/envs/test
+  COMPOSE_FILE: infrastructure/docker-compose/docker-compose.yml
+  E2E_FAILURE_THRESHOLD_PCT: "25"  # % of (non-skipped) tests allowed to fail; set to "0" to require all to pass
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Templates
+# ──────────────────────────────────────────────────────────────────────────────
+
+.docker-login: &docker-login
+  before_script:
+    - docker system prune -af || true
+    - echo "$ACR_PASSWORD" | docker login "$ACR_REGISTRY" -u "$ACR_USERNAME" --password-stdin
+
+.azure-login: &azure-login
+  before_script:
+    - az login --service-principal -u "$AZURE_CLIENT_ID" -p "$AZURE_CLIENT_SECRET" --tenant "$AZURE_TENANT_ID"
+    - az account set --subscription "$AZURE_SUBSCRIPTION_ID"
+
+.terraform-setup: &terraform-setup
+  image:
+    name: hashicorp/terraform:1.9
+    entrypoint: [""]
+  before_script:
+    - cd "$TF_DIR"
+    - export TF_VAR_pipeline_id="$CI_PIPELINE_ID"
+    - export TF_VAR_image_tag="$IMAGE_TAG"
+    - export TF_VAR_acr_login_server="$ACR_REGISTRY"
+    - export TF_VAR_acr_username="$ACR_USERNAME"
+    - export TF_VAR_acr_password="$ACR_PASSWORD"
+    - export TF_VAR_db_admin_password="$DB_ADMIN_PASSWORD"
+    - export TF_VAR_anthropic_api_key="$ANTHROPIC_API_KEY"
+    - export TF_VAR_openai_api_key="$OPENAI_API_KEY"
+    - export TF_VAR_aws_access_key_id="$AWS_ACCESS_KEY_ID"
+    - export TF_VAR_aws_secret_access_key="$AWS_SECRET_ACCESS_KEY"
+    - export TF_VAR_aws_region_name="${AWS_REGION_NAME:-us-east-1}"
+    - export ARM_CLIENT_ID="$AZURE_CLIENT_ID"
+    - export ARM_CLIENT_SECRET="$AZURE_CLIENT_SECRET"
+    - export ARM_TENANT_ID="$AZURE_TENANT_ID"
+    - export ARM_SUBSCRIPTION_ID="$AZURE_SUBSCRIPTION_ID"
+    - export TF_VAR_subscription_id="$AZURE_SUBSCRIPTION_ID"
+    - terraform init -backend-config="access_key=$TF_STATE_ACCESS_KEY"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# LINT
+# ──────────────────────────────────────────────────────────────────────────────
+
+lint:api-gateway:
+  stage: lint
+  image: node:20-alpine
+  script:
+    - cd backend/api-gateway
+    - npm ci
+    - npm run lint
+  rules:
+    - changes:
+        - backend/api-gateway/**
+
+lint:python:
+  stage: lint
+  image: python:3.11-slim
+  script:
+    - pip install ruff
+    - ruff check backend/agent-orchestrator backend/preprocessing-worker mcp-servers/
+  rules:
+    - changes:
+        - backend/**/*.py
+        - mcp-servers/**/*.py
+
+# ──────────────────────────────────────────────────────────────────────────────
+# BUILD IMAGES
+# ──────────────────────────────────────────────────────────────────────────────
+
+.build-image: &build-image
+  stage: build_images
+  image: docker:26
+  services:
+    - docker:26-dind
+  <<: *docker-login
+
+build:api-gateway:
+  <<: *build-image
+  script:
+    - |
+      docker build \
+        --build-arg BUILDKIT_INLINE_CACHE=1 \
+        --cache-from "$ACR_REGISTRY/api-gateway:buildcache" \
+        -t "$ACR_REGISTRY/api-gateway:$IMAGE_TAG" \
+        backend/api-gateway/
+    - docker push "$ACR_REGISTRY/api-gateway:$IMAGE_TAG"
+    - docker tag "$ACR_REGISTRY/api-gateway:$IMAGE_TAG" "$ACR_REGISTRY/api-gateway:buildcache"
+    - docker push "$ACR_REGISTRY/api-gateway:buildcache" || true
+
+build:agent-orchestrator:
+  <<: *build-image
+  script:
+    - |
+      docker build \
+        --build-arg BUILDKIT_INLINE_CACHE=1 \
+        --cache-from "$ACR_REGISTRY/agent-orchestrator:buildcache" \
+        -f backend/agent-orchestrator/Dockerfile \
+        -t "$ACR_REGISTRY/agent-orchestrator:$IMAGE_TAG" \
+        .
+    - docker push "$ACR_REGISTRY/agent-orchestrator:$IMAGE_TAG"
+    - docker tag "$ACR_REGISTRY/agent-orchestrator:$IMAGE_TAG" "$ACR_REGISTRY/agent-orchestrator:buildcache"
+    - docker push "$ACR_REGISTRY/agent-orchestrator:buildcache" || true
+
+build:preprocessing-worker:
+  <<: *build-image
+  script:
+    - |
+      docker build \
+        --build-arg BUILDKIT_INLINE_CACHE=1 \
+        --cache-from "$ACR_REGISTRY/preprocessing-worker:buildcache" \
+        -t "$ACR_REGISTRY/preprocessing-worker:$IMAGE_TAG" \
+        backend/preprocessing-worker/
+    - docker push "$ACR_REGISTRY/preprocessing-worker:$IMAGE_TAG"
+    - docker tag "$ACR_REGISTRY/preprocessing-worker:$IMAGE_TAG" "$ACR_REGISTRY/preprocessing-worker:buildcache"
+    - docker push "$ACR_REGISTRY/preprocessing-worker:buildcache" || true
+
+build:mcp-server-analysis:
+  stage: build_analysis
+  image: docker:26
+  services:
+    - docker:26-dind
+  <<: *docker-login
+  script:
+    - docker system prune -f || true
+    - |
+      docker build \
+        --build-arg BUILDKIT_INLINE_CACHE=1 \
+        --build-arg PRELOAD_MODELS=false \
+        --cache-from "$ACR_REGISTRY/mcp-server-analysis:buildcache" \
+        -t "$ACR_REGISTRY/mcp-server-analysis:$IMAGE_TAG" \
+        mcp-servers/mcp-server-analysis/
+    - docker push "$ACR_REGISTRY/mcp-server-analysis:$IMAGE_TAG"
+    - docker tag "$ACR_REGISTRY/mcp-server-analysis:$IMAGE_TAG" "$ACR_REGISTRY/mcp-server-analysis:buildcache"
+    - docker push "$ACR_REGISTRY/mcp-server-analysis:buildcache" || true
+
+build:mcp-server-processing:
+  <<: *build-image
+  script:
+    - |
+      docker build \
+        --build-arg BUILDKIT_INLINE_CACHE=1 \
+        --cache-from "$ACR_REGISTRY/mcp-server-processing:buildcache" \
+        -t "$ACR_REGISTRY/mcp-server-processing:$IMAGE_TAG" \
+        mcp-servers/mcp-server-processing/
+    - docker push "$ACR_REGISTRY/mcp-server-processing:$IMAGE_TAG"
+    - docker tag "$ACR_REGISTRY/mcp-server-processing:$IMAGE_TAG" "$ACR_REGISTRY/mcp-server-processing:buildcache"
+    - docker push "$ACR_REGISTRY/mcp-server-processing:buildcache" || true
+
+build:angular-shell:
+  <<: *build-image
+  script:
+    - |
+      docker build \
+        --build-arg BUILDKIT_INLINE_CACHE=1 \
+        --cache-from "$ACR_REGISTRY/angular-shell:buildcache" \
+        -t "$ACR_REGISTRY/angular-shell:$IMAGE_TAG" \
+        frontend/angular-shell/
+    - docker push "$ACR_REGISTRY/angular-shell:$IMAGE_TAG"
+    - docker tag "$ACR_REGISTRY/angular-shell:$IMAGE_TAG" "$ACR_REGISTRY/angular-shell:buildcache"
+    - docker push "$ACR_REGISTRY/angular-shell:buildcache" || true
+
+build:librechat:
+  <<: *build-image
+  script:
+    - |
+      docker build \
+        --build-arg BUILDKIT_INLINE_CACHE=1 \
+        --cache-from "$ACR_REGISTRY/librechat:buildcache" \
+        -t "$ACR_REGISTRY/librechat:$IMAGE_TAG" \
+        frontend/librechat/
+    - docker push "$ACR_REGISTRY/librechat:$IMAGE_TAG"
+    - docker tag "$ACR_REGISTRY/librechat:$IMAGE_TAG" "$ACR_REGISTRY/librechat:buildcache"
+    - docker push "$ACR_REGISTRY/librechat:buildcache" || true
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ACA TEST ENVIRONMENT
+# ──────────────────────────────────────────────────────────────────────────────
+
+aca_test_env_create:
+  stage: aca_test_env_create
+  <<: *terraform-setup
+  rules:
+    - if: '$SKIP_TESTS == "true"'
+      when: never
+    - when: on_success
+  script:
+    - terraform apply -auto-approve
+    - terraform output -json > tf-outputs.json
+  artifacts:
+    paths:
+      - infrastructure/terraform/envs/test/tf-outputs.json
+    expire_in: 2h
+
+deploy_test_services:
+  stage: deploy_test_services
+  image: mcr.microsoft.com/azure-cli:latest
+  <<: *azure-login
+  rules:
+    - if: '$SKIP_TESTS == "true"'
+      when: never
+    - when: on_success
+  script:
+    - |
+      SERVICES=(api-gateway agent-orchestrator preprocessing-worker
+                mcp-server-analysis mcp-server-processing angular-shell librechat)
+      RG="video-extract-test-${CI_PIPELINE_ID}"
+      for svc in "${SERVICES[@]}"; do
+        az containerapp update \
+          --name "$svc" \
+          --resource-group "$RG" \
+          --image "$ACR_REGISTRY/$svc:$IMAGE_TAG" || true
+      done
+    - |
+      # Run db-init job inside the ACA environment (postgresql:5432 is reachable there).
+      # This seeds all tables and app_settings so services don't fall back to env-var defaults.
+      RG="video-extract-test-${CI_PIPELINE_ID}"
+      echo "Starting db-init job..."
+      EXEC_NAME=$(az containerapp job start \
+        --name db-init \
+        --resource-group "$RG" \
+        --query "name" --output tsv)
+      echo "db-init execution: $EXEC_NAME — polling for completion..."
+      for i in $(seq 1 30); do
+        STATUS=$(az containerapp job execution list \
+          --name db-init \
+          --resource-group "$RG" \
+          --query "[?name=='$EXEC_NAME'].properties.status | [0]" \
+          --output tsv 2>/dev/null || echo "")
+        if [ "$STATUS" = "Succeeded" ]; then
+          echo "db-init completed successfully."
+          break
+        elif [ "$STATUS" = "Failed" ]; then
+          echo "ERROR: db-init job execution failed. Aborting."
+          az containerapp job execution list \
+            --name db-init \
+            --resource-group "$RG" \
+            --query "[?name=='$EXEC_NAME']" --output json || true
+          exit 1
+        fi
+        echo "  attempt $i/30: status=${STATUS:-pending} — waiting 10s..."
+        sleep 10
+      done
+
+e2e_tests:
+  stage: e2e_tests
+  image: python:3.11-slim
+  rules:
+    - if: '$SKIP_TESTS == "true"'
+      when: never
+    - when: on_success
+  script:
+    - apt-get update -qq && apt-get install -y --no-install-recommends ffmpeg curl
+    - pip install pytest httpx asyncpg
+    - OUTPUTS="infrastructure/terraform/envs/test/tf-outputs.json"
+    - export API_GATEWAY_URL="https://$(python3 -c 'import json; print(json.load(open("infrastructure/terraform/envs/test/tf-outputs.json"))["api_gateway_fqdn"]["value"])')"
+    - export AGENT_ORCHESTRATOR_URL="https://$(python3 -c 'import json; print(json.load(open("infrastructure/terraform/envs/test/tf-outputs.json"))["agent_orchestrator_fqdn"]["value"])')"
+    - export MCP_ANALYSIS_URL="https://$(python3 -c 'import json; print(json.load(open("infrastructure/terraform/envs/test/tf-outputs.json"))["mcp_analysis_fqdn"]["value"])')"
+    - export MCP_PROCESSING_URL="https://$(python3 -c 'import json; print(json.load(open("infrastructure/terraform/envs/test/tf-outputs.json"))["mcp_processing_fqdn"]["value"])')"
+    - |
+      echo "Waiting for API Gateway to be healthy (ACA cold start)..."
+      for i in $(seq 1 40); do
+        STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$API_GATEWAY_URL/health" || true)
+        if [ "$STATUS" = "200" ]; then
+          echo "API Gateway healthy after $i attempts."
+          break
+        fi
+        echo "  attempt $i: status=$STATUS — retrying in 5s..."
+        sleep 5
+      done
+    - mkdir -p ci-logs
+    - pytest tests/e2e/ -v --tb=short --junit-xml=ci-logs/pytest-results.xml 2>&1 | tee ci-logs/pytest.log || true
+    - python3 scripts/check_e2e_threshold.py
+  artifacts:
+    paths:
+      - ci-logs/pytest.log
+      - ci-logs/pytest-results.xml
+      - ci-logs/test-job-ids.json
+    expire_in: 7d
+    when: always
+
+collect_e2e_logs:
+  stage: collect_e2e_logs
+  image: mcr.microsoft.com/azure-cli:latest
+  <<: *azure-login
+  rules:
+    - if: '$SKIP_TESTS == "true"'
+      when: never
+    - when: always
+  needs:
+    - job: e2e_tests
+      artifacts: true
+    - job: aca_test_env_create
+      artifacts: true
+  script:
+    - RG="video-extract-test-${CI_PIPELINE_ID}"
+    - SERVICES=(api-gateway agent-orchestrator preprocessing-worker
+                mcp-server-analysis mcp-server-processing angular-shell librechat postgresql)
+    - mkdir -p ci-logs
+    - |
+      # --- Container stdout/stderr logs (last 300 lines each) ---
+      for svc in "${SERVICES[@]}"; do
+        echo "=== $svc ===" | tee ci-logs/${svc}.log
+        az containerapp logs show \
+          --name "$svc" \
+          --resource-group "$RG" \
+          --tail 300 \
+          --output table 2>&1 | tee -a ci-logs/${svc}.log || {
+          echo "[no console logs — trying system logs]" >> ci-logs/${svc}.log
+          az containerapp logs show \
+            --name "$svc" \
+            --resource-group "$RG" \
+            --type system \
+            --tail 300 \
+            --output table 2>&1 >> ci-logs/${svc}.log || \
+            echo "[no logs available for $svc]" >> ci-logs/${svc}.log
+        }
+      done
+    - |
+      # --- Container app status and replica diagnostics ---
+      echo "=== Container App Status ===" > ci-logs/aca-status.log
+      for svc in "${SERVICES[@]}"; do
+        echo "--- $svc ---" >> ci-logs/aca-status.log
+        az containerapp show \
+          --name "$svc" \
+          --resource-group "$RG" \
+          --query "{name:name, provisioningState:properties.provisioningState, latestRevision:properties.latestRevisionName, runningStatus:properties.runningStatus}" \
+          --output json 2>&1 >> ci-logs/aca-status.log || true
+        az containerapp replica list \
+          --name "$svc" \
+          --resource-group "$RG" \
+          --output table 2>&1 >> ci-logs/aca-status.log || true
+      done
+    - |
+      # --- Resource group overview ---
+      echo "=== Resource Group Resources ===" > ci-logs/rg-resources.log
+      az resource list --resource-group "$RG" --output table 2>&1 >> ci-logs/rg-resources.log
+    - |
+      # --- Service Bus queue depths ---
+      echo "=== Service Bus Queue Depths ===" > ci-logs/servicebus.log
+      SB_NS=$(az servicebus namespace list --resource-group "$RG" --query "[0].name" --output tsv 2>/dev/null || true)
+      if [ -n "$SB_NS" ]; then
+        for q in video-uploaded video-indexed job-queued; do
+          az servicebus queue show \
+            --namespace-name "$SB_NS" \
+            --resource-group "$RG" \
+            --name "$q" \
+            --query "{queue:name, active:countDetails.activeMessageCount, dead:countDetails.deadLetterMessageCount}" \
+            --output json 2>&1 >> ci-logs/servicebus.log || true
+        done
+      fi
+    - |
+      # --- Per-test action logs from API ---
+      OUTPUTS="infrastructure/terraform/envs/test/tf-outputs.json"
+      API_GW_FQDN=""
+      if [ -f "$OUTPUTS" ]; then
+        API_GW_FQDN=$(python3 -c \
+          'import json,sys; d=json.load(open(sys.argv[1])); print(d.get("api_gateway_fqdn",{}).get("value",""))' \
+          "$OUTPUTS" 2>/dev/null || true)
+      fi
+      mkdir -p ci-logs/tests
+      if [ -f ci-logs/test-job-ids.json ]; then
+        if [ -n "$API_GW_FQDN" ]; then
+          export API_GW_URL="https://${API_GW_FQDN}"
+          python3 scripts/collect_test_logs.py
+        else
+          echo "Could not determine API_GW_URL from $OUTPUTS — skipping per-test log collection" | tee ci-logs/tests/collection-skipped.log
+        fi
+      else
+        echo "ci-logs/test-job-ids.json not found — skipping per-test log collection"
+      fi
+    - echo "Log collection complete. Files:" && ls -lh ci-logs/
+  artifacts:
+    name: "e2e-logs-${CI_PIPELINE_ID}"
+    paths:
+      - ci-logs/
+    expire_in: 7d
+    when: always
+
+aca_test_env_destroy:
+  stage: aca_test_env_destroy
+  <<: *terraform-setup
+  rules:
+    - if: '$SKIP_TESTS == "true"'
+      when: never
+    - when: always  # Always runs — cleans up even if previous stages fail
+  script:
+    - terraform destroy -auto-approve
+
+# ──────────────────────────────────────────────────────────────────────────────
+# PUSH PRODUCTION IMAGES (tag with git ref + latest)
+# ──────────────────────────────────────────────────────────────────────────────
+
+push_to_acr:
+  stage: push_to_acr
+  image: docker:26
+  services:
+    - docker:26-dind
+  <<: *docker-login
+  script:
+    - |
+      for svc in api-gateway agent-orchestrator preprocessing-worker \
+                 mcp-server-analysis mcp-server-processing angular-shell librechat; do
+        docker pull "$ACR_REGISTRY/$svc:$IMAGE_TAG"
+        docker tag  "$ACR_REGISTRY/$svc:$IMAGE_TAG" "$ACR_REGISTRY/$svc:latest"
+        docker push "$ACR_REGISTRY/$svc:latest"
+      done
+  only:
+    - master
+
+# ──────────────────────────────────────────────────────────────────────────────
+# DEPLOY DEV
+# ──────────────────────────────────────────────────────────────────────────────
+
+deploy_dev:
+  stage: deploy_dev
+  image: mcr.microsoft.com/azure-cli:latest
+  <<: *azure-login
+  script:
+    - |
+      for svc in api-gateway agent-orchestrator preprocessing-worker \
+                 mcp-server-analysis mcp-server-processing angular-shell librechat; do
+        az containerapp update \
+          --name "$svc" \
+          --resource-group "video-extract-dev" \
+          --image "$ACR_REGISTRY/$svc:$IMAGE_TAG"
+      done
+    - |
+      az containerapp update \
+        --name angular-shell \
+        --resource-group "video-extract-dev" \
+        --set-env-vars \
+          AZURE_ENTRA_TENANT_ID="$TF_VAR_entra_tenant_id" \
+          AZURE_ENTRA_CLIENT_ID="$TF_VAR_entra_client_id" \
+          APP_BASE_URL="$TF_VAR_app_base_url"
+    - |
+      echo "Running db-init to apply schema migrations..."
+      EXEC_NAME=$(az containerapp job start \
+        --name db-init \
+        --resource-group "video-extract-dev" \
+        --query "name" --output tsv)
+      echo "db-init execution: $EXEC_NAME — polling for completion..."
+      for i in $(seq 1 30); do
+        STATUS=$(az containerapp job execution list \
+          --name db-init \
+          --resource-group "video-extract-dev" \
+          --query "[?name=='$EXEC_NAME'].properties.status | [0]" \
+          --output tsv 2>/dev/null || echo "")
+        if [ "$STATUS" = "Succeeded" ]; then
+          echo "db-init completed successfully."
+          break
+        elif [ "$STATUS" = "Failed" ]; then
+          echo "ERROR: db-init failed in dev. Check ACA job logs."
+          az containerapp job execution list \
+            --name db-init \
+            --resource-group "video-extract-dev" \
+            --query "[?name=='$EXEC_NAME']" --output json || true
+          exit 1
+        fi
+        echo "  attempt $i/30: status=${STATUS:-pending} — waiting 10s..."
+        sleep 10
+      done
+  environment:
+    name: dev
+  only:
+    - master
+
+# ──────────────────────────────────────────────────────────────────────────────
+# MANUAL APPROVAL GATE
+# ──────────────────────────────────────────────────────────────────────────────
+
+manual_approval:
+  stage: manual_approval
+  image: alpine:latest
+  script:
+    - echo "Manual approval granted — proceeding to production deployment"
+  when: manual
+  allow_failure: false
+  only:
+    - master
+
+# ──────────────────────────────────────────────────────────────────────────────
+# DEPLOY PROD
+# ──────────────────────────────────────────────────────────────────────────────
+
+deploy_prod:
+  stage: deploy_prod
+  image: alpine:latest
+  script:
+    - echo "Production deployment not yet configured — placeholder"
+  needs:
+    - manual_approval
+  only:
+    - master

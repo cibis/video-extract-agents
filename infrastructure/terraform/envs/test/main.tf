@@ -1,0 +1,101 @@
+terraform {
+  required_providers {
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "~> 4.0"
+    }
+  }
+}
+
+provider "azurerm" {
+  features {
+    key_vault {
+      purge_soft_delete_on_destroy    = true
+      recover_soft_deleted_key_vaults = true
+    }
+  }
+  use_cli         = false
+  subscription_id = var.subscription_id
+}
+
+# Ephemeral test environment — destroyed after every CI pipeline run
+resource "azurerm_resource_group" "main" {
+  name     = "video-extract-test-${var.pipeline_id}"
+  location = var.location
+  tags     = local.tags
+}
+
+locals {
+  environment = "test-${var.pipeline_id}"
+  tags = {
+    environment = "test"
+    pipeline-id = var.pipeline_id
+    project     = "video-extract"
+    managed-by  = "ci"
+    ttl         = "2h"
+  }
+}
+
+module "storage" {
+  source              = "../../modules/storage"
+  resource_group_name = azurerm_resource_group.main.name
+  location            = var.location
+  environment         = "test${var.pipeline_id}"
+  tags                = local.tags
+}
+
+
+resource "azurerm_servicebus_namespace" "main" {
+  name                = "ve-test-${var.pipeline_id}-bus"
+  resource_group_name = azurerm_resource_group.main.name
+  location            = var.location
+  sku                 = "Standard"
+  tags                = local.tags
+}
+
+resource "azurerm_servicebus_queue" "queues" {
+  for_each           = toset(["video-uploaded", "video-indexed", "job-queued"])
+  name               = each.key
+  namespace_id       = azurerm_servicebus_namespace.main.id
+  max_delivery_count = 5
+}
+
+module "aca" {
+  source                        = "../../modules/aca"
+  resource_group_name           = azurerm_resource_group.main.name
+  location                      = var.location
+  environment                   = local.environment
+  acr_login_server              = var.acr_login_server
+  acr_username                  = var.acr_username
+  acr_password                  = var.acr_password
+  image_tag                     = var.image_tag
+  service_bus_namespace         = azurerm_servicebus_namespace.main.name
+  service_bus_connection_string = azurerm_servicebus_namespace.main.default_primary_connection_string
+  storage_connection_string     = module.storage.primary_connection_string
+  db_admin_password             = var.db_admin_password
+  storage_account_id            = module.storage.storage_account_id
+  storage_account_name          = module.storage.storage_account_name
+  storage_account_key           = module.storage.primary_access_key
+  agent_model                   = var.agent_model
+  tool_frontier_model           = var.tool_frontier_model
+  model_aliases_override        = var.model_aliases_override
+  anthropic_api_key             = var.anthropic_api_key
+  openai_api_key                = var.openai_api_key
+  aws_access_key_id             = var.aws_access_key_id
+  aws_secret_access_key         = var.aws_secret_access_key
+  aws_region_name               = var.aws_region_name
+  appinsights_connection_string = ""
+  front_door_url                = ""
+  local_dev_skip_auth           = true
+  postgres_persistent_volume    = false
+  create_db_init_job            = true
+  min_replicas                  = 0
+  max_replicas                  = 3
+  tags                          = local.tags
+}
+
+# App Insights, Front Door, and Key Vault are not provisioned for ephemeral test environments:
+# - App Insights: skipped (appinsights_connection_string = "" above)
+# - Front Door: too slow to provision per pipeline run; api-gateway OUTPUT_URL_MODE=frontdoor
+#   remains set but FRONT_DOOR_URL is empty — E2E tests should not rely on signed CDN URLs
+# - Key Vault: test env uses direct env vars injected via TF_VAR_* in CI

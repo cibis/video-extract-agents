@@ -1,0 +1,226 @@
+variable "resource_group_name" {
+  type = string
+}
+
+variable "location" {
+  type = string
+}
+
+variable "environment" {
+  type = string
+}
+
+variable "acr_login_server" {
+  type = string
+}
+
+variable "acr_username" {
+  type      = string
+  sensitive = true
+}
+
+variable "acr_password" {
+  type      = string
+  sensitive = true
+}
+
+variable "image_tag" {
+  type    = string
+  default = "latest"
+}
+
+variable "service_bus_namespace" {
+  type = string
+}
+
+variable "service_bus_connection_string" {
+  type      = string
+  sensitive = true
+}
+
+variable "storage_connection_string" {
+  type      = string
+  sensitive = true
+}
+
+variable "db_admin_username" {
+  type    = string
+  default = "psqladmin"
+}
+
+variable "db_admin_password" {
+  type      = string
+  sensitive = true
+}
+
+variable "db_storage_gb" {
+  type        = number
+  default     = 32
+  description = "Azure Files share quota in GB for PostgreSQL data"
+}
+
+variable "storage_account_id" {
+  type        = string
+  description = "Resource ID of the storage account used for Azure Files (PostgreSQL volume)"
+}
+
+variable "storage_account_name" {
+  type        = string
+  description = "Name of the storage account used for Azure Files (PostgreSQL volume)"
+}
+
+variable "storage_account_key" {
+  type      = string
+  sensitive = true
+}
+
+variable "agent_model" {
+  type        = string
+  description = "LiteLLM model string for agent reasoning, e.g. bedrock/us.amazon.nova-2-lite-v1:0, anthropic/claude-sonnet-4-6, openai/gpt-4o"
+  default     = "bedrock/us.amazon.nova-2-lite-v1:0"
+}
+
+variable "tool_frontier_model" {
+  type        = string
+  description = "LiteLLM model string for mcp-server-analysis vision tools"
+  default     = "bedrock/us.amazon.nova-2-lite-v1:0"
+}
+
+variable "model_aliases_override" {
+  type        = string
+  description = "Comma-separated alias=model pairs to override defaults in mcp-server-analysis"
+  default     = ""
+}
+
+variable "anthropic_api_key" {
+  type      = string
+  sensitive = true
+  default   = ""
+}
+
+variable "openai_api_key" {
+  type      = string
+  sensitive = true
+  default   = ""
+}
+
+variable "aws_access_key_id" {
+  type      = string
+  sensitive = true
+  default   = ""
+}
+
+variable "aws_secret_access_key" {
+  type      = string
+  sensitive = true
+  default   = ""
+}
+
+variable "aws_region_name" {
+  type    = string
+  default = "us-east-1"
+}
+
+variable "appinsights_connection_string" {
+  type      = string
+  sensitive = true
+  default   = ""
+}
+
+variable "front_door_url" {
+  type        = string
+  default     = ""
+  description = "Azure Front Door endpoint hostname; injected as FRONT_DOOR_URL into api-gateway"
+}
+
+variable "entra_tenant_id" {
+  type        = string
+  default     = ""
+  description = "Azure Entra External ID tenant ID for JWT validation in api-gateway"
+}
+
+variable "entra_client_id" {
+  type        = string
+  default     = ""
+  description = "Azure Entra External ID client/app ID for JWT validation in api-gateway"
+}
+
+variable "min_replicas" {
+  type    = number
+  default = 0
+}
+
+variable "max_replicas" {
+  type    = number
+  default = 10
+}
+
+variable "local_dev_skip_auth" {
+  type        = bool
+  default     = false
+  description = "Set LOCAL_DEV_SKIP_AUTH=true on api-gateway; used in ephemeral test environments only"
+}
+
+variable "postgres_persistent_volume" {
+  type        = bool
+  default     = true
+  description = "Mount an Azure Files volume for PostgreSQL data persistence. Set false in ephemeral test environments — Azure Files SMB does not support chmod, which causes initdb to fail on cold starts."
+}
+
+variable "create_db_init_job" {
+  type        = bool
+  default     = false
+  description = "Create an ACA Container App Job that runs init_db.py against the internal PostgreSQL on demand. Enable in ephemeral test environments where the DB starts empty."
+}
+
+variable "app_base_url" {
+  type        = string
+  default     = ""
+  description = "Public base URL of the Angular shell (used as MSAL redirectUri)"
+}
+
+variable "librechat_creds_key" {
+  type        = string
+  sensitive   = true
+  default     = ""
+  description = "64 hex-char (32-byte) AES key for LibreChat credential encryption. Inject via TF_VAR_librechat_creds_key in CI."
+}
+
+variable "librechat_creds_iv" {
+  type        = string
+  sensitive   = true
+  default     = ""
+  description = "32 hex-char (16-byte) AES IV for LibreChat credential encryption. Inject via TF_VAR_librechat_creds_iv in CI."
+}
+
+variable "librechat_jwt_secret" {
+  type        = string
+  sensitive   = true
+  default     = ""
+  description = "JWT signing secret for LibreChat sessions. Inject via TF_VAR_librechat_jwt_secret in CI."
+}
+
+variable "librechat_jwt_refresh_secret" {
+  type        = string
+  sensitive   = true
+  default     = ""
+  description = "JWT refresh-token signing secret for LibreChat. Inject via TF_VAR_librechat_jwt_refresh_secret in CI."
+}
+
+variable "librechat_secret_key" {
+  type        = string
+  sensitive   = true
+  default     = ""
+  description = "General application secret for LibreChat. Inject via TF_VAR_librechat_secret_key in CI."
+}
+
+variable "librechat_agent_api_key" {
+  type        = string
+  default     = "dev-key"
+  description = "Placeholder API key used by LibreChat's custom endpoint config."
+}
+
+variable "tags" {
+  type    = map(string)
+  default = {}
+}

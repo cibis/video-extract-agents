@@ -1,0 +1,82 @@
+variable "pipeline_id" {
+  type        = string
+  description = "GitLab CI pipeline ID — used to create uniquely named ephemeral resources"
+}
+
+variable "acr_login_server" {
+  type        = string
+  description = "ACR login server (shared registry where build_images pushes to)"
+}
+
+variable "acr_username" {
+  type      = string
+  sensitive = true
+}
+
+variable "acr_password" {
+  type      = string
+  sensitive = true
+}
+
+variable "subscription_id" {
+  type        = string
+  description = "Azure subscription ID — required by azurerm provider 4.x when use_cli = false"
+}
+
+variable "location" {
+  type    = string
+  default = "eastus"
+}
+
+variable "image_tag" {
+  type = string
+}
+
+variable "db_admin_password" {
+  type      = string
+  sensitive = true
+}
+
+variable "agent_model" {
+  type    = string
+  default = "bedrock/us.amazon.nova-2-lite-v1:0"
+}
+
+variable "tool_frontier_model" {
+  type    = string
+  default = "bedrock/us.amazon.nova-2-lite-v1:0"
+}
+
+variable "model_aliases_override" {
+  type    = string
+  default = ""
+}
+
+variable "anthropic_api_key" {
+  type      = string
+  sensitive = true
+  default   = ""
+}
+
+variable "openai_api_key" {
+  type      = string
+  sensitive = true
+  default   = ""
+}
+
+variable "aws_access_key_id" {
+  type      = string
+  sensitive = true
+  default   = ""
+}
+
+variable "aws_secret_access_key" {
+  type      = string
+  sensitive = true
+  default   = ""
+}
+
+variable "aws_region_name" {
+  type    = string
+  default = "us-east-1"
+}

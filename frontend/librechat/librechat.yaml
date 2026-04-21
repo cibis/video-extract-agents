@@ -1,0 +1,53 @@
+version: 1.2.0
+cache: true
+
+# Custom endpoint wired to Video Extract API Gateway
+endpoints:
+  custom:
+    - name: "Video Extract Agent"
+      apiKey: "${AGENT_API_KEY}"
+      baseURL: "${API_GATEWAY_URL}/v1"
+      models:
+        default: ["video-extract-agent"]
+        fetch: false
+      titleConvo: false
+      modelDisplayLabel: "Video Extract Agent"
+      # Strip parameters unsupported by our custom endpoint
+      dropParams:
+        - "model"
+        - "stop"
+        - "user"
+        - "frequency_penalty"
+        - "presence_penalty"
+        - "top_p"
+        - "n"
+      # Disable upstream UI surfaces — platform manages these
+      modelSelect: false
+      agentsEndpoint: false
+      iconURL: "/images/logo.png"
+
+# Disable features not needed in this deployment
+interface:
+  # File upload is handled by Angular shell — disable in LibreChat
+  endpointsMenu: false
+  modelSelect: false
+  parameters: false
+  sidePanel: false
+  presets: false
+  multiConvo: false
+  fileUpload: false
+  agents: false
+  bookmarks: false
+  prompts: false
+
+# Registration is handled programmatically by the Angular shell via the
+# provision-user flow (register + login using Entra-derived credentials).
+# Disable the registration link in the LibreChat UI so users are never
+# prompted to create a separate account.
+#
+# IMPORTANT: The ALLOW_REGISTRATION env var must remain "true" so that the
+# Angular shell can call POST /api/auth/register on first login.  Setting
+# this yaml key to false only hides the UI link; actual endpoint access is
+# controlled by the ALLOW_REGISTRATION env var.
+registration:
+  socialLogins: []

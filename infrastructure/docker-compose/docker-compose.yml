@@ -1,0 +1,442 @@
+version: "3.9"
+
+networks:
+  video-extract-network:
+    name: video-extract-network
+    driver: bridge
+
+volumes:
+  postgres-data:
+  azurite-data:
+  mongo-data:
+
+x-common-env: &common-env
+  TZ: UTC
+  APPLICATIONINSIGHTS_CONNECTION_STRING: ""
+
+x-common-python-env: &common-python-env
+  <<: *common-env
+  DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgresql:5432/videoextract
+  AZURE_SERVICE_BUS_CONNECTION_STRING: ${AZURE_SERVICE_BUS_CONNECTION_STRING:-Endpoint=sb://servicebus-emulator;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;UseDevelopmentEmulator=true;}
+  AZURE_STORAGE_CONNECTION_STRING: ${AZURE_STORAGE_CONNECTION_STRING:-DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;}
+  AZURE_STORAGE_CONTAINER_NAME: videos
+
+services:
+  # ─── Infrastructure ────────────────────────────────────────────────────────
+
+  postgresql:
+    image: postgres:15-alpine
+    container_name: video-extract-postgresql
+    environment:
+      TZ: UTC
+      PGTZ: UTC
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: videoextract
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - video-extract-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:latest
+    command: azurite --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0 --skipApiVersionCheck
+    environment:
+      TZ: UTC
+    ports:
+      - "10000:10000"
+      - "10001:10001"
+      - "10002:10002"
+    volumes:
+      - azurite-data:/data
+    networks:
+      - video-extract-network
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('net').createConnection(10000,'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      TZ: UTC
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "${MSSQL_SA_PASSWORD:-ServiceBus123!}"
+    # tmpfs keeps the data dir in RAM — always empty on (re)start so the
+    # Service Bus emulator can run CREATE DATABASE without hitting "file already exists".
+    tmpfs:
+      - /var/opt/mssql/data
+    networks:
+      - video-extract-network
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"${MSSQL_SA_PASSWORD:-ServiceBus123!}\" -Q 'SELECT 1' -No -C || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  servicebus-emulator:
+    image: mcr.microsoft.com/azure-messaging/servicebus-emulator:latest
+    ports:
+      - "5672:5672"
+      - "5300:5300"
+    environment:
+      TZ: UTC
+      ACCEPT_EULA: "Y"
+      SQL_SERVER: mssql
+      MSSQL_SA_PASSWORD: "${MSSQL_SA_PASSWORD:-ServiceBus123!}"
+    volumes:
+      - ./servicebus-config.json:/ServiceBus_Emulator/ConfigFiles/Config.json
+    depends_on:
+      mssql:
+        condition: service_healthy
+    networks:
+      - video-extract-network
+    healthcheck:
+      disable: true
+
+  mongo:
+    image: mongo:7
+    environment:
+      TZ: UTC
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - video-extract-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  db-init:
+    image: python:3.11-slim
+    command: >
+      sh -c "pip install asyncpg --quiet &&
+             python /scripts/init_db.py"
+    environment:
+      TZ: UTC
+      DATABASE_URL: postgresql://postgres:postgres@postgresql:5432/videoextract
+    volumes:
+      - ../../scripts:/scripts:ro
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    networks:
+      - video-extract-network
+    restart: "no"
+
+  storage-init:
+    image: python:3.11-slim
+    command:
+      - sh
+      - -c
+      - |
+        pip install azure-storage-blob --quiet &&
+        python /scripts/init_storage.py
+    environment:
+      TZ: UTC
+      AZURE_STORAGE_CONNECTION_STRING: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;"
+      AZURE_STORAGE_CONTAINER_NAME: videos
+    volumes:
+      - ../../scripts:/scripts:ro
+    depends_on:
+      azurite:
+        condition: service_healthy
+    networks:
+      - video-extract-network
+    restart: "no"
+
+  # ─── Backend Services ───────────────────────────────────────────────────────
+
+  api-gateway:
+    build:
+      context: ../../backend/api-gateway
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      <<: *common-env
+      NODE_ENV: development
+      PORT: "8000"
+      DATABASE_URL: postgresql://postgres:postgres@postgresql:5432/videoextract
+      AZURE_STORAGE_CONNECTION_STRING: ${AZURE_STORAGE_CONNECTION_STRING:-DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;}
+      AZURE_STORAGE_CONTAINER_NAME: videos
+      AZURE_SERVICE_BUS_CONNECTION_STRING: ${AZURE_SERVICE_BUS_CONNECTION_STRING:-Endpoint=sb://servicebus-emulator;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;UseDevelopmentEmulator=true;}
+      AGENT_ORCHESTRATOR_URL: http://agent-orchestrator:8001
+      AGENT_API_KEY: ${AGENT_API_KEY:-dev-key-local}
+      LOCAL_DEV_SKIP_AUTH: ${LOCAL_DEV_SKIP_AUTH:-true}
+      AZURE_ENTRA_CLIENT_ID: ${AZURE_ENTRA_CLIENT_ID:-}
+      AZURE_ENTRA_TENANT_ID: ${AZURE_ENTRA_TENANT_ID:-}
+      AZURE_ENTRA_JWKS_URI: ${AZURE_ENTRA_JWKS_URI:-}
+      OUTPUT_URL_MODE: local
+      BLOB_PROXY_BASE_URL: http://localhost:8000
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
+      azurite:
+        condition: service_healthy
+      storage-init:
+        condition: service_completed_successfully
+      agent-orchestrator:
+        condition: service_healthy
+    networks:
+      - video-extract-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  agent-orchestrator:
+    build:
+      context: ../..
+      dockerfile: backend/agent-orchestrator/Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      <<: *common-python-env
+      AGENT_MODEL: ${AGENT_MODEL:-bedrock/us.amazon.nova-2-lite-v1:0}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_REGION_NAME: ${AWS_REGION_NAME:-us-east-1}
+      MCP_ANALYSIS_URL: http://mcp-server-analysis:8100
+      MCP_PROCESSING_URL: http://mcp-server-processing:8200
+      SERVICE_NAME: agent-orchestrator
+      LOG_LEVEL: "debug"
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      azurite:
+        condition: service_healthy
+      servicebus-emulator:
+        condition: service_started
+      mcp-server-analysis:
+        condition: service_healthy
+      mcp-server-processing:
+        condition: service_healthy
+    networks:
+      - video-extract-network
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8001/health')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  preprocessing-worker:
+    build:
+      context: ../../backend/preprocessing-worker
+      dockerfile: Dockerfile
+    environment:
+      <<: *common-python-env
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      azurite:
+        condition: service_healthy
+      servicebus-emulator:
+        condition: service_started
+      db-init:
+        condition: service_completed_successfully
+      storage-init:
+        condition: service_completed_successfully
+    networks:
+      - video-extract-network
+
+  mcp-server-analysis:
+    build:
+      context: ../../mcp-servers/mcp-server-analysis
+      dockerfile: Dockerfile
+    ports:
+      - "8100:8100"
+    environment:
+      <<: *common-env
+      AZURE_STORAGE_CONNECTION_STRING: ${AZURE_STORAGE_CONNECTION_STRING:-DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;}
+      AZURE_STORAGE_CONTAINER_NAME: videos
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgresql:5432/videoextract
+      TOOL_FRONTIER_MODEL: ${TOOL_FRONTIER_MODEL:-bedrock/us.amazon.nova-2-lite-v1:0}
+      MODEL_ALIASES_OVERRIDE: ${MODEL_ALIASES_OVERRIDE:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_REGION_NAME: ${AWS_REGION_NAME:-us-east-1}
+      SERVICE_NAME: mcp-server-analysis
+      LOG_LEVEL: "debug"
+      HOME: /tmp
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      azurite:
+        condition: service_healthy
+    networks:
+      - video-extract-network
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8100/health')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  mcp-server-processing:
+    build:
+      context: ../../mcp-servers/mcp-server-processing
+      dockerfile: Dockerfile
+    ports:
+      - "8200:8200"
+    environment:
+      <<: *common-env
+      AZURE_STORAGE_CONNECTION_STRING: ${AZURE_STORAGE_CONNECTION_STRING:-DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;}
+      AZURE_STORAGE_CONTAINER_NAME: videos
+      LOG_LEVEL: "debug"
+    depends_on:
+      azurite:
+        condition: service_healthy
+    networks:
+      - video-extract-network
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8200/health')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ─── Frontend ───────────────────────────────────────────────────────────────
+
+  angular-shell:
+    build:
+      context: ../../frontend/angular-shell
+      dockerfile: Dockerfile
+      args:
+        BUILD_CONFIG: development
+    ports:
+      - "4200:80"
+    environment:
+      TZ: UTC
+      AZURE_ENTRA_CLIENT_ID: ${AZURE_ENTRA_CLIENT_ID:-}
+      AZURE_ENTRA_TENANT_ID: ${AZURE_ENTRA_TENANT_ID:-}
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:4200}
+      LOCAL_DEV_SKIP_AUTH: ${LOCAL_DEV_SKIP_AUTH:-true}
+      API_GATEWAY_URL: http://api-gateway:8000
+      LIBRECHAT_URL: http://librechat:3080
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+    networks:
+      - video-extract-network
+
+  librechat:
+    build:
+      context: ../../frontend/librechat
+      dockerfile: Dockerfile
+    ports:
+      - "3080:3080"
+    environment:
+      TZ: UTC
+      HOST: "0.0.0.0"
+      # Required for credentials-based CORS so the browser stores the
+      # HttpOnly refreshToken cookie set on login (used for session restore).
+      # Must match the origin of the Angular shell as seen by the browser.
+      ANGULAR_ORIGIN: http://localhost:4200
+      API_GATEWAY_URL: http://api-gateway:8000
+      AGENT_API_KEY: dev-key-local
+      LIBRECHAT_SECRET_KEY: local-dev-secret
+      # LibreChat upstream crypto requirements
+      CREDS_KEY: f34be427ebb29de8d88c107a71546019685ed8b241d927f1a2180c29c8548a16
+      CREDS_IV: e2341419ec3dd3d19b13a1a87fafcbfb
+      JWT_SECRET: local-dev-jwt-secret-change-in-production
+      JWT_REFRESH_SECRET: local-dev-jwt-refresh-secret-change-in-production
+      MONGO_URI: mongodb://mongo:27017/LibreChat
+      # ALLOW_REGISTRATION must remain "true" so the Angular shell can
+      # programmatically provision a LibreChat user via POST /api/auth/register.
+      # Users never see the registration UI — platform-init.js bootstraps the
+      # LibreChat session from URL params before React hydrates.  In local dev
+      # the Angular shell provisions a fixed dev@local account automatically.
+      ALLOW_REGISTRATION: "true"
+      ALLOW_UNVERIFIED_EMAIL: "true"
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+    networks:
+      - video-extract-network
+
+  # ─── MCP Bridge (external agent support) ────────────────────────────────────
+  # Only starts when --profile external-agents is passed.
+  # Not started by plain docker-compose up.
+  # Usage:
+  #   docker-compose --profile external-agents up mcp-bridge -d
+  mcp-bridge:
+    profiles:
+      - external-agents
+    build:
+      context: ../../external-agents/mcp-bridge
+      dockerfile: Dockerfile
+    container_name: video-extract-mcp-bridge
+    ports:
+      - "8300:8300"
+    environment:
+      MCP_ANALYSIS_URL: http://mcp-server-analysis:8100
+      MCP_PROCESSING_URL: http://mcp-server-processing:8200
+      LOG_LEVEL: "INFO"
+    depends_on:
+      mcp-server-analysis:
+        condition: service_healthy
+      mcp-server-processing:
+        condition: service_healthy
+    networks:
+      - video-extract-network
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8300/health')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ─── E2E Test Runner ────────────────────────────────────────────────────────
+  # Only starts when --profile e2e is passed. Not started by docker-compose up.
+  # Usage:
+  #   docker-compose --profile e2e run --rm test-runner
+  #   docker-compose --profile e2e run --rm test-runner pytest tests/e2e/test_detect_motion.py
+  test-runner:
+    profiles:
+      - e2e
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker-compose/Dockerfile.test
+    working_dir: /workspace
+    volumes:
+      - ../..:/workspace
+    environment:
+      TZ: UTC
+      API_GATEWAY_URL: http://api-gateway:8000
+      MCP_ANALYSIS_URL: http://mcp-server-analysis:8100
+      MCP_PROCESSING_URL: http://mcp-server-processing:8200
+      AGENT_ORCHESTRATOR_URL: http://agent-orchestrator:8001
+      AZURE_STORAGE_CONTAINER_NAME: videos
+      # DB access so conftest can read tool_frontier_model from app_settings
+      DATABASE_URL: postgresql://postgres:postgres@postgresql:5432/videoextract
+      # Env var default for tool_frontier_model (used when app_settings row is absent)
+      TOOL_FRONTIER_MODEL: ${TOOL_FRONTIER_MODEL:-bedrock/us.amazon.nova-2-lite-v1:0}
+      # Provider credentials — whichever is set determines which frontier tests run
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:-}
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+    networks:
+      - video-extract-network

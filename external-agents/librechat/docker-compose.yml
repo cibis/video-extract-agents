@@ -1,0 +1,75 @@
+version: "3.9"
+
+# Standalone LibreChat stack for external agent access.
+# Joins the main video-extract-network so it can reach mcp-server-analysis and
+# mcp-server-processing.  Start the main stack first:
+#   cd infrastructure/docker-compose && docker-compose up -d
+# Then start this stack:
+#   cd external-agents/librechat && docker-compose up -d
+
+networks:
+  video-extract-network:
+    external: true
+
+volumes:
+  librechat-uploads:
+  mongo-official-data:
+
+services:
+  mcp-bridge:
+    build:
+      context: ../../external-agents/mcp-bridge
+      dockerfile: Dockerfile
+    container_name: video-extract-mcp-bridge
+    ports:
+      - "8300:8300"
+    environment:
+      MCP_ANALYSIS_URL: http://mcp-server-analysis:8100
+      MCP_PROCESSING_URL: http://mcp-server-processing:8200
+      LOG_LEVEL: "INFO"
+    networks:
+      - video-extract-network
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8300/health')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  librechat-official:
+    image: ghcr.io/danny-avila/librechat:latest
+    container_name: video-extract-librechat-official
+    ports:
+      - "3081:3080"
+    volumes:
+      - ./librechat.yaml:/app/librechat.yaml:ro
+      - librechat-uploads:/app/uploads
+    env_file:
+      - .env
+    environment:
+      MONGO_URI: mongodb://mongo-official:27017/LibreChat
+      ALLOW_REGISTRATION: "true"
+      ALLOW_UNVERIFIED_EMAIL: "true"
+      FILE_UPLOAD_DRIVER: local
+      # Files served at /api/files/{id}/filename — ingest_video downloads from this URL
+      FILE_UPLOAD_BASE_URL: http://librechat-official:3080
+    depends_on:
+      mcp-bridge:
+        condition: service_healthy
+      mongo-official:
+        condition: service_healthy
+    networks:
+      - video-extract-network
+
+  mongo-official:
+    image: mongo:7
+    container_name: video-extract-mongo-official
+    volumes:
+      - mongo-official-data:/data/db
+    networks:
+      - video-extract-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

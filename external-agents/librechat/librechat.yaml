@@ -1,0 +1,20 @@
+version: 1.2.0
+
+mcpSettings:
+  allowedDomains:
+    - http://mcp-bridge:8300
+
+mcpServers:
+  video-extraction-tools:
+    type: sse
+    url: http://mcp-bridge:8300/sse
+    timeout: 3000000
+
+endpoints:
+  anthropic:
+    apiKey: "${ANTHROPIC_API_KEY}"
+    models:
+      - claude-sonnet-4-6
+      - claude-opus-4-6
+      - claude-haiku-4-5-20251001
+
