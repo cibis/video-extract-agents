@@ -100,7 +100,6 @@ junit.xml
 .angular/
 
 # ── Screenshots / local media ─────────────────────────────────────────────
-screenshots/
 *.mp4
 *.mov
 *.avi
