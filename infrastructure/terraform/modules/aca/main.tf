@@ -175,10 +175,6 @@ resource "azurerm_container_app" "api_gateway" {
         value = "frontdoor"
       }
       env {
-        name  = "FRONT_DOOR_ENDPOINT"
-        value = var.front_door_url
-      }
-      env {
         name  = "AZURE_ENTRA_TENANT_ID"
         value = var.entra_tenant_id
       }

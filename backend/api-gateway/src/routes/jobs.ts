@@ -12,10 +12,10 @@ jobsRouter.get('/', async (req, res, next) => {
     const filter = (['real', 'test', 'all'].includes(rawFilter ?? '')
       ? rawFilter : 'real') as 'real' | 'test' | 'all';
     const jobs = await listJobsForUser(req.user!.id, filter);
-    const signed = jobs.map(j => ({
+    const signed = await Promise.all(jobs.map(async j => ({
       ...j,
-      output_url: j.output_url ? generateSignedDownloadUrl(j.output_url) : null,
-    }));
+      output_url: j.output_url ? await generateSignedDownloadUrl(j.output_url) : null,
+    })));
     res.json({ jobs: signed });
   } catch (err) {
     next(err);
@@ -112,10 +112,10 @@ jobsRouter.get('/:id', async (req, res, next) => {
 jobsRouter.get('/:id/outputs', async (req, res, next) => {
   try {
     const outputs = await getJobOutputs(req.params.id);
-    const withSignedUrls = outputs.map(o => ({
+    const withSignedUrls = await Promise.all(outputs.map(async o => ({
       ...o,
-      signed_url: generateSignedDownloadUrl(o.blob_url),
-    }));
+      signed_url: await generateSignedDownloadUrl(o.blob_url),
+    })));
     res.json({ outputs: withSignedUrls });
   } catch (err) {
     next(err);

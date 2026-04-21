@@ -69,7 +69,7 @@ assetsRouter.get('/:id', async (req, res, next) => {
     }
     res.json({
       ...asset,
-      signed_url: generateSignedDownloadUrl(asset.blob_url),
+      signed_url: await generateSignedDownloadUrl(asset.blob_url),
     });
   } catch (err) {
     next(err);

@@ -14,7 +14,7 @@ downloadsRouter.get('/:id', async (req, res, next) => {
     }
 
     const expiresInSeconds = 36000;
-    const signedUrl = generateSignedDownloadUrl(asset.blob_url, expiresInSeconds);
+    const signedUrl = await generateSignedDownloadUrl(asset.blob_url, expiresInSeconds);
     const expiresAt = new Date(Date.now() + expiresInSeconds * 1000).toISOString();
 
     res.json({

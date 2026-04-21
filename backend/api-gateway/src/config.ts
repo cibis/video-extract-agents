@@ -13,8 +13,6 @@ const configSchema = z.object({
   AZURE_ENTRA_TENANT_ID: z.string().default(''),
   AZURE_ENTRA_CLIENT_ID: z.string().default(''),
   AZURE_ENTRA_JWKS_URI: z.string().default(''),
-  FRONT_DOOR_ENDPOINT: z.string().default(''),
-  FRONT_DOOR_SECRET: z.string().default(''),
   AGENT_ORCHESTRATOR_URL: z.string().default('http://agent-orchestrator:8001'),
   AGENT_API_KEY: z.string().default(''),
   LOCAL_DEV_SKIP_AUTH: z.string().transform(v => v === 'true').default('false'),

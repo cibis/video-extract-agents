@@ -1,4 +1,3 @@
-import crypto from 'crypto';
 import path from 'path';
 import {
   BlobServiceClient,
@@ -94,13 +93,13 @@ export async function deleteBlobsByPrefix(containerName: string, prefix: string)
 
 /**
  * Generate a signed download URL for any blob.
- * - local mode: returns blobUrl unchanged (direct Azurite access)
- * - frontdoor mode: applies HMAC-SHA256 Front Door signing with expiry
+ * - local mode: rewrites Azurite internal URL to the api-gateway blob-proxy
+ * - frontdoor mode: generates a short-lived SAS read token (same mechanism as uploads)
  */
-export function generateSignedDownloadUrl(
+export async function generateSignedDownloadUrl(
   blobUrl: string,
   expirySeconds: number = 36000
-): string {
+): Promise<string> {
   if (config.OUTPUT_URL_MODE === 'local') {
     // Convert internal Docker URL (http://azurite:10000/devstoreaccount1/...)
     // to a browser-accessible proxy URL (http://localhost:8000/v1/blob-proxy/...)
@@ -113,13 +112,18 @@ export function generateSignedDownloadUrl(
       return blobUrl;
     }
   }
-  const expires = Math.floor(Date.now() / 1000) + expirySeconds;
-  const urlPath = new URL(blobUrl).pathname;
-  const baseUrl = `${config.FRONT_DOOR_ENDPOINT}${urlPath}`;
-  const stringToSign = `${urlPath}\n${expires}`;
-  const signature = crypto
-    .createHmac('sha256', config.FRONT_DOOR_SECRET)
-    .update(stringToSign)
-    .digest('hex');
-  return `${baseUrl}?expires=${expires}&sig=${signature}`;
+  // Parse container and blob path from the internal Azure Blob Storage URL.
+  // URL pathname: /container/blobPath  e.g. /videos/userId/.../output.mp4
+  const pathname = new URL(blobUrl).pathname;
+  const slashIdx = pathname.indexOf('/', 1);
+  const containerName = pathname.slice(1, slashIdx);
+  const blobPath = pathname.slice(slashIdx + 1);
+  const blobClient = getBlobServiceClient()
+    .getContainerClient(containerName)
+    .getBlobClient(blobPath);
+  return blobClient.generateSasUrl({
+    permissions: BlobSASPermissions.parse('r'),
+    expiresOn: new Date(Date.now() + expirySeconds * 1000),
+    protocol: SASProtocol.HttpsAndHttp,
+  });
 }

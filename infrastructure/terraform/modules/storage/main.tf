@@ -11,6 +11,13 @@ resource "azurerm_storage_account" "main" {
     delete_retention_policy {
       days = 7
     }
+    cors_rule {
+      allowed_headers    = ["*"]
+      allowed_methods    = ["DELETE", "GET", "HEAD", "MERGE", "OPTIONS", "POST", "PUT"]
+      allowed_origins    = var.cors_allowed_origins
+      exposed_headers    = ["*"]
+      max_age_in_seconds = 3600
+    }
   }
 
   tags = var.tags

@@ -165,7 +165,7 @@ chatRouter.post('/', async (req, res) => {
 
       // Convert internal blob URL to browser-accessible signed/proxy URL
       const downloadUrl = data.output_url
-        ? generateSignedDownloadUrl(data.output_url)
+        ? await generateSignedDownloadUrl(data.output_url)
         : null;
 
       const replyText = downloadUrl

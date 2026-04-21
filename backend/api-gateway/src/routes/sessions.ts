@@ -18,10 +18,10 @@ sessionsRouter.get('/:id/assets', async (req, res, next) => {
   try {
     const sessionId = req.params.id;
     const assets = await getSessionAssets(sessionId);
-    const withSignedUrls = assets.map(asset => ({
+    const withSignedUrls = await Promise.all(assets.map(async asset => ({
       ...asset,
-      signed_url: generateSignedDownloadUrl(asset.blob_url),
-    }));
+      signed_url: await generateSignedDownloadUrl(asset.blob_url),
+    })));
     res.json({ assets: withSignedUrls });
   } catch (err) {
     next(err);

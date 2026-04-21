@@ -17,7 +17,7 @@ outputsRouter.get('/:id', async (req, res, next) => {
       return;
     }
 
-    const outputUrl = generateSignedDownloadUrl(job.output_url);
+    const outputUrl = await generateSignedDownloadUrl(job.output_url);
     res.json({ outputUrl });
   } catch (err) {
     next(err);
