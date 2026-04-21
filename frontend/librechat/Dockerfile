@@ -112,6 +112,26 @@ RUN node -e "\
   console.log('Server timeout patch applied');\
 "
 
+# Patch React Router to use basename="/chat" so routes match when LibreChat is embedded
+# at /chat/* in the Angular shell iframe. Without this, the router sees /chat/c/new and
+# finds no matching route because all routes are defined without the /chat prefix.
+# routes/index.tsx ends with `]);` — add the basename option before the closing paren.
+RUN node -e "\
+  const fs = require('fs');\
+  const p = 'client/src/routes/index.tsx';\
+  let src = fs.readFileSync(p, 'utf8');\
+  if (src.includes('basename')) {\
+    console.log('basename already present in routes/index.tsx — skip');\
+  } else {\
+    src = src.replace(/\]\);\s*$/, '], { basename: \"/chat\" });');\
+    fs.writeFileSync(p, src);\
+    const final = fs.readFileSync(p, 'utf8');\
+    const idx = final.lastIndexOf(']);');\
+    console.log('Router closing after patch:', JSON.stringify(final.slice(idx - 10, idx + 30)));\
+    console.log('basename patch applied to', p);\
+  }\
+"
+
 # Patch main.tsx to mount platform bridge components (AuthBridge + JobStatusBridge)
 # alongside the LibreChat app so they receive postMessage events from the Angular shell.
 RUN node -e "\
