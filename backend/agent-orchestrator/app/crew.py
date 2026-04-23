@@ -305,7 +305,7 @@ async def run_crew(
     agent_model = db_agent_model or settings.agent_model
     _db_indexing_wait = results[6] if not isinstance(results[6], Exception) else None
     try:
-        _MAX_INDEXING_WAIT_ATTEMPTS = int(_db_indexing_wait) if _db_indexing_wait is not None else 60
+        _MAX_INDEXING_WAIT_ATTEMPTS = int(_db_indexing_wait) if _db_indexing_wait is not None else 600
     except (ValueError, TypeError):
         _MAX_INDEXING_WAIT_ATTEMPTS = 60
     _db_agent_rpm = results[7] if not isinstance(results[7], Exception) else None
@@ -420,6 +420,20 @@ async def run_crew(
             "run_crew: keyframe indices fetched — %s",
             {url: len(frames) for url, frames in keyframe_indices.items()},
         )
+
+    # # Drop any videos whose keyframe index is still empty (preprocessing timed out or failed).
+    # # Keeping them in video_urls causes extract_frames to return zero frames, which confuses
+    # # the planner into producing an empty extraction plan for those videos.
+    # indexable_video_urls = [u for u in video_urls if keyframe_indices.get(u)]
+    # if len(indexable_video_urls) < len(video_urls):
+    #     skipped = [u for u in video_urls if u not in indexable_video_urls]
+    #     logger.warning(
+    #         "run_crew: excluding %d video(s) with no keyframe index "
+    #         "(preprocessing incomplete or timed out): %s",
+    #         len(skipped), skipped,
+    #     )
+    #     video_urls = indexable_video_urls
+    #     primary_video_url = video_urls[0] if video_urls else ""
 
     # Write each video's keyframe index to blob; pass only asset paths to tasks/LLMs.
     keyframe_index_assets: dict[str, str] = {}

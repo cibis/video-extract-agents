@@ -102,11 +102,11 @@ async def run_consumer() -> None:
             async with ServiceBusClient.from_connection_string(
                 settings.azure_service_bus_connection_string
             ) as client:
-                receiver = client.get_queue_receiver(queue_name="job-queued", max_wait_time=5)
+                receiver = client.get_queue_receiver(queue_name="job-queued", max_wait_time=60*10)
                 async with receiver:
                     backoff = 2  # reset on successful connection
                     while True:
-                        messages = await receiver.receive_messages(max_message_count=1, max_wait_time=5)
+                        messages = await receiver.receive_messages(max_message_count=1, max_wait_time=60*10)
                         for msg in messages:
                             renewer = asyncio.create_task(_renew_lock(receiver, msg))
                             try:
