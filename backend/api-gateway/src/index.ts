@@ -111,8 +111,8 @@ async function main() {
   // Disable socket idle timeout and set generous keep-alive so long-running
   // agent calls (which can exceed several minutes) are never cut short.
   server.setTimeout(0);
-  server.keepAliveTimeout = 3_600_000; // 1 hour
-  server.headersTimeout  = 3_601_000; // must exceed keepAliveTimeout
+  server.keepAliveTimeout = 3_600_000 * 10; // 10 hours
+  server.headersTimeout  = 3_601_000 * 10; // must exceed keepAliveTimeout
 
   server.listen(config.PORT, () => {
     console.log(`API Gateway listening on port ${config.PORT} [${config.NODE_ENV}]`);

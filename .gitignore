@@ -2,6 +2,7 @@ _private-cmd.md
 gitlab-logs
 ci-logs
 _build-container.md
+_prompt-examples.md
 
 # ── Secrets & environment ──────────────────────────────────────────────────
 .env

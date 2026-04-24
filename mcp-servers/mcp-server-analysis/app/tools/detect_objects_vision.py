@@ -175,7 +175,7 @@ async def detect_objects_vision(
         "frames_analysed": len(per_frame_results),
         "objects_searched": object_descriptions,
         "frames_with_detections": frames_with_detections,
-        "segments": segments,
+        #"segments": segments,
         "model_used": client.model_id,
     }
 

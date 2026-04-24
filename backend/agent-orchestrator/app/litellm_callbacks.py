@@ -245,6 +245,108 @@ def clear_loop() -> None:
     _thread_local.event_loop = None
 
 
+def _response_has_tool_call(result) -> bool:
+    """
+    Best-effort detection of whether an LLM response contains a tool/function call.
+
+    Supports:
+    - OpenAI / Azure (tool_calls, function_call)
+    - Anthropic (tool_use blocks)
+    - LiteLLM normalized objects
+    - Raw dict responses
+    - Fallback: JSON/text heuristics
+    """
+
+    def _get(obj, key, default=None):
+        if obj is None:
+            return default
+        if isinstance(obj, dict):
+            return obj.get(key, default)
+        return getattr(obj, key, default)
+
+    def _has_tool_in_message(msg) -> bool:
+        if not msg:
+            return False
+
+        # --- 1. OpenAI / LiteLLM modern ---
+        if _get(msg, "tool_calls"):
+            return True
+
+        # --- 2. OpenAI legacy ---
+        if _get(msg, "function_call"):
+            return True
+
+        # --- 3. Anthropic / Claude (content blocks) ---
+        content = _get(msg, "content")
+
+        if isinstance(content, list):
+            for block in content:
+                # dict-style block
+                if isinstance(block, dict):
+                    if block.get("type") in ("tool_use", "tool_call"):
+                        return True
+                    if block.get("name") and block.get("input"):
+                        return True
+
+                # object-style block
+                else:
+                    if getattr(block, "type", None) in ("tool_use", "tool_call"):
+                        return True
+                    if getattr(block, "name", None) and getattr(block, "input", None):
+                        return True
+
+        # --- 4. Some providers put tool info directly on message ---
+        if _get(msg, "tool_name") or _get(msg, "tool"):
+            return True
+
+        # --- 5. Text fallback (weak but useful) ---
+        text = _get(msg, "content")
+        if isinstance(text, str):
+            # common structured outputs
+            if '"tool_calls"' in text:
+                return True
+            if '"function_call"' in text:
+                return True
+            if '"name":' in text and '"arguments"' in text:
+                return True
+
+        return False
+
+    try:
+        if result is None:
+            return False
+
+        # --- OpenAI / LiteLLM style ---
+        choices = _get(result, "choices")
+        if choices:
+            first = choices[0]
+
+            msg = _get(first, "message") or _get(first, "delta")
+            if _has_tool_in_message(msg):
+                return True
+
+        # --- Anthropic top-level content ---
+        content = _get(result, "content")
+        if isinstance(content, list):
+            for block in content:
+                if isinstance(block, dict):
+                    if block.get("type") in ("tool_use", "tool_call"):
+                        return True
+                else:
+                    if getattr(block, "type", None) in ("tool_use", "tool_call"):
+                        return True
+
+        # --- Some providers embed message directly ---
+        if _has_tool_in_message(result):
+            return True
+
+        return False
+
+    except Exception:
+        # Never break agent loop due to detection failure
+        return False
+
+
 @contextmanager
 def wrap_litellm_completion() -> Generator[None, None, None]:
     """Context manager that monkey-patches litellm.completion for the duration.
@@ -313,30 +415,30 @@ def wrap_litellm_completion() -> Generator[None, None, None]:
                     exc = e2
                     raise
 
-            # Transient InternalServerError (e.g. Docker DNS blip resolving
-            # api.anthropic.com): retry up to 3 times with 5 s sleep.
-            # litellm.num_retries only covers ServiceUnavailableError /
-            # APIConnectionError; InternalServerError is a separate class.
-            import litellm as _litellm_inner
-            if isinstance(e, _litellm_inner.InternalServerError):
-                for attempt in range(1, 4):
-                    logger.warning(
-                        "_record_completion: InternalServerError (attempt %d/3) — "
-                        "sleeping 5 s before retry: %s",
-                        attempt, e,
-                    )
-                    time.sleep(5)
-                    try:
-                        result = _original(*args, **kwargs)
-                        _strip_response_fences(result)
-                        return result
-                    except _litellm_inner.InternalServerError as e_retry:
-                        if attempt == 3:
-                            exc = e_retry
-                            raise
-                    except Exception as e_retry:
-                        exc = e_retry
-                        raise
+            # # Transient InternalServerError (e.g. Docker DNS blip resolving
+            # # api.anthropic.com): retry up to 3 times with 5 s sleep.
+            # # litellm.num_retries only covers ServiceUnavailableError /
+            # # APIConnectionError; InternalServerError is a separate class.
+            # import litellm as _litellm_inner
+            # if isinstance(e, _litellm_inner.InternalServerError):
+            #     for attempt in range(1, 4):
+            #         logger.warning(
+            #             "_record_completion: InternalServerError (attempt %d/3) — "
+            #             "sleeping 5 s before retry: %s",
+            #             attempt, e,
+            #         )
+            #         time.sleep(5)
+            #         try:
+            #             result = _original(*args, **kwargs)
+            #             _strip_response_fences(result)
+            #             return result
+            #         except _litellm_inner.InternalServerError as e_retry:
+            #             if attempt == 3:
+            #                 exc = e_retry
+            #                 raise
+            #         except Exception as e_retry:
+            #             exc = e_retry
+            #             raise
 
             exc = e
             raise
@@ -439,21 +541,27 @@ def wrap_litellm_completion() -> Generator[None, None, None]:
 
             # Cycling guard: count consecutive successful LLM calls without a tool success.
             # Raised after logging so the LLM call is still recorded before we abort.
-            if exc is None:
-                llm_cycle_limit = getattr(_thread_local, "llm_cycle_limit", None)
-                if llm_cycle_limit is not None:
+            llm_cycle_limit = getattr(_thread_local, "llm_cycle_limit", None)
+
+            if llm_cycle_limit is not None:
+
+                if exc is None and _response_has_tool_call(result) and result is not None:
+                    # ✅ RESET on tool call
+                    _thread_local.llm_cycle_count = 0
+
+                else:
+                    # ✅ count everything else:
+                    # - no tool call
+                    # - failures
                     _thread_local.llm_cycle_count = getattr(_thread_local, "llm_cycle_count", 0) + 1
-                    _count = _thread_local.llm_cycle_count
-                    if _count > llm_cycle_limit:
-                        logger.warning(
-                            "_record_completion: LLM cycling limit hit — %d consecutive LLM calls "
-                            "without a successful tool use (limit: %d)",
-                            _count, llm_cycle_limit,
-                        )
-                        raise LlmCyclingLimitExceeded(
-                            f"{_count} consecutive LLM calls without a successful tool use "
-                            f"(limit: {llm_cycle_limit})."
-                        )
+
+                _count = _thread_local.llm_cycle_count
+
+                if _count > llm_cycle_limit:
+                    raise LlmCyclingLimitExceeded(
+                        f"{_count} consecutive LLM calls without tool call "
+                        f"(limit: {llm_cycle_limit})"
+                    )
 
     _litellm.completion = _record_completion
     try:

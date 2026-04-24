@@ -2,7 +2,7 @@
 import asyncio
 import json
 import logging
-from azure.servicebus.aio import ServiceBusClient
+from azure.servicebus.aio import ServiceBusClient, AutoLockRenewer
 from app.config import settings
 from app.crew import run_crew
 from app.db import get_job, update_job_status
@@ -93,41 +93,77 @@ async def _renew_lock(receiver, msg, interval: int = 45) -> None:
             break
 
 
+MAX_LOCK_RENEWAL_SECONDS = 60 * 60  # adjust to worst-case job duration
+
+
 async def run_consumer() -> None:
     """Consume job-queued messages indefinitely, reconnecting on failure."""
     backoff = 2
+
     while True:
         try:
             logger.info("Starting Service Bus consumer for queue: job-queued")
+
             async with ServiceBusClient.from_connection_string(
                 settings.azure_service_bus_connection_string
             ) as client:
-                receiver = client.get_queue_receiver(queue_name="job-queued", max_wait_time=5)
+
+                renewer = AutoLockRenewer()
+
+                receiver = client.get_queue_receiver(
+                    queue_name="job-queued",
+                    max_wait_time=60 * 10,
+                )
+
                 async with receiver:
                     backoff = 2  # reset on successful connection
+
                     while True:
-                        messages = await receiver.receive_messages(max_message_count=1, max_wait_time=5)
+                        messages = await receiver.receive_messages(
+                            max_message_count=1,
+                            max_wait_time=60 * 10,
+                        )
+
                         for msg in messages:
-                            renewer = asyncio.create_task(_renew_lock(receiver, msg))
+                            # ✅ built-in lock renewal (replaces fragile custom task)
+                            renewer.register(
+                                receiver,
+                                msg,
+                                max_lock_renewal_duration=MAX_LOCK_RENEWAL_SECONDS,
+                            )
+
                             try:
                                 body = json.loads(str(msg))
+
+                                # ⚠️ MUST be idempotent
                                 await process_job_message(body)
+
                                 await receiver.complete_message(msg)
+
                             except Exception as exc:
                                 logger.error("Failed to process message: %s", exc)
-                                await receiver.abandon_message(msg)
-                            finally:
-                                renewer.cancel()
+
+                                # lock may already be lost → don't crash
+                                try:
+                                    await receiver.abandon_message(msg)
+                                except Exception:
+                                    logger.warning(
+                                        "Failed to abandon message (likely lock already lost)"
+                                    )
+
                         await asyncio.sleep(1)
+
         except asyncio.CancelledError:
             raise
+
         except Exception as exc:
             logger.warning(
-                "Service Bus consumer disconnected (%s). Retrying in %ds...", exc, backoff
+                "Service Bus consumer disconnected (%s). Retrying in %ds...",
+                exc,
+                backoff,
             )
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, 60)
-
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)

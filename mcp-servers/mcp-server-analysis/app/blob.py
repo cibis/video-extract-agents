@@ -47,7 +47,7 @@ async def read_blob_bytes(url: str) -> bytes:
     """
     if settings.azure_storage_connection_string and _is_blob_url(url):
         return await _read_via_sdk(url)
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=3600.0) as client:
         resp = await client.get(url)
         resp.raise_for_status()
         return resp.content
@@ -89,7 +89,7 @@ async def _download_via_sdk(url: str, local_path: str) -> None:
 
 
 async def _download_via_http(url: str, local_path: str) -> None:
-    async with httpx.AsyncClient(timeout=120.0) as client:
+    async with httpx.AsyncClient(timeout=3600.0) as client:
         async with client.stream("GET", url) as response:
             response.raise_for_status()
             with open(local_path, "wb") as f:

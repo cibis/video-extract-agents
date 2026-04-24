@@ -344,6 +344,12 @@ services:
     environment:
       TZ: UTC
       HOST: "0.0.0.0"
+
+      # LLM / API timeout overrides (10 hours)
+      REQUEST_TIMEOUT_MS: 36000000
+      LLM_REQUEST_TIMEOUT_MS: 36000000
+      API_TIMEOUT_MS: 36000000
+
       # Required for credentials-based CORS so the browser stores the
       # HttpOnly refreshToken cookie set on login (used for session restore).
       # Must match the origin of the Angular shell as seen by the browser.
