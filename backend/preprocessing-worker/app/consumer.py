@@ -3,7 +3,7 @@ import asyncio
 import json
 import logging
 import tempfile
-from azure.servicebus.aio import ServiceBusClient
+from azure.servicebus.aio import ServiceBusClient, AutoLockRenewer
 from azure.servicebus import ServiceBusMessage
 from app.config import settings
 from app.processor import extract_keyframes
@@ -105,40 +105,65 @@ async def _renew_lock(receiver, msg, interval: int = 45) -> None:
             logger.warning("Failed to renew SB message lock (non-fatal): %s", exc)
             break
 
+MAX_LOCK_RENEWAL_SECONDS = 60 * 60  # 1 hour (set based on worst-case processing)
 
 async def run_consumer() -> None:
     logger.info("Starting Service Bus consumer for queue: video-uploaded")
     attempt = 0
+
     while True:
         try:
             async with ServiceBusClient.from_connection_string(
                 settings.azure_service_bus_connection_string
             ) as client:
-                receiver = client.get_queue_receiver(queue_name="video-uploaded", max_wait_time=60*10)
+
+                renewer = AutoLockRenewer()
+
+                receiver = client.get_queue_receiver(
+                    queue_name="video-uploaded",
+                    max_wait_time=60 * 10,
+                )
+
                 async with receiver:
                     attempt = 0
                     logger.info("Connected to Service Bus queue: video-uploaded")
+
                     while True:
-                        messages = await receiver.receive_messages(max_message_count=1, max_wait_time=60*10)
+                        messages = await receiver.receive_messages(
+                            max_message_count=1,
+                            max_wait_time=60 * 10,
+                        )
+
                         for msg in messages:
-                            renewer = asyncio.create_task(_renew_lock(receiver, msg))
+                            # 🔑 register message for automatic lock renewal
+                            renewer.register(
+                                receiver,
+                                msg,
+                                max_lock_renewal_duration=MAX_LOCK_RENEWAL_SECONDS,
+                            )
+
                             try:
                                 body = json.loads(str(msg))
+
+                                # 🔴 MUST be idempotent
                                 await process_video_message(body)
+
                                 await receiver.complete_message(msg)
+
                             except Exception as exc:
                                 logger.error("Message processing failed: %s", exc)
-                                await receiver.abandon_message(msg)
-                            finally:
-                                renewer.cancel()
+
                                 try:
-                                    await renewer
-                                except asyncio.CancelledError:
-                                    pass
+                                    await receiver.abandon_message(msg)
+                                except Exception:
+                                    logger.warning("Failed to abandon message (likely lock lost)")
+
                         await asyncio.sleep(1)
+
         except asyncio.CancelledError:
             logger.info("Consumer task cancelled; shutting down")
             raise
+
         except Exception as exc:
             wait = min(_BACKOFF_BASE * (2 ** attempt), _BACKOFF_MAX)
             logger.warning(

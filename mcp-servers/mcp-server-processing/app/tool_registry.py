@@ -351,7 +351,7 @@ TOOLS: dict[str, dict] = {
                         "analyze_scene or detect_objects_vision."
                     ),
                 },
-                "matches": {"type": "array"},
+                #"matches": {"type": "array"},
                 "total_matches": {"type": "integer"},
                 "truncated": {"type": "boolean"},
             },

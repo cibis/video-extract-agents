@@ -153,7 +153,7 @@ async def estimate_height_above_surface(
 
     Output:
       result_asset: str — blob URL of full per-frame height data
-      summary: {segments, events_count, peak_height_m, total_event_duration_seconds}
+      summary: {events_count, peak_height_m, total_event_duration_seconds}
     """
     frames_asset: str = payload.get("frames_asset", "")
     job_id: str = payload.get("job_id", "")
@@ -273,7 +273,7 @@ async def estimate_height_above_surface(
 
     total_duration = sum(s["end_seconds"] - s["start_seconds"] for s in segments)
     summary = {
-        "segments": segments,
+        #"segments": segments,
         "events_count": len(events),
         "peak_height_m": round(peak_height_m, 3),
         "total_event_duration_seconds": round(total_duration, 2),

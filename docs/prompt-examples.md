@@ -19,4 +19,6 @@ Extract from this kitesurfer first person video taken with a helmet mounted came
 
 ```
 Extract from this kitesurfer first person video taken with a helmet mounted camera all segments with the kitesurfer jumping. Include also segments where other kitesurfers are detected that are at ranges less than 20 meters. If a segment matching the requirements is detected and the segment is shorter than 3 seconds, expand it to 3 seconds.
+
+Extract from this kitesurfer first person video taken with a helmet mounted camera all segments with the kitesurfer jumping higher than 4 meters. If a segment matching the requirements is detected and the segment is shorter than 3 seconds, expand it to 3 seconds.
 ```

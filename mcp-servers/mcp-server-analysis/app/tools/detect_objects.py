@@ -44,7 +44,7 @@ async def detect_objects(
 
     Output:
       result_asset: str — blob URL of the full detections JSON
-      summary: {segments, classes_detected, total_detections, total_duration_seconds}
+      summary: {classes_detected, total_detections, total_duration_seconds}
     """
     frames_asset: str = payload.get("frames_asset", "")
     job_id: str = payload.get("job_id", "")
@@ -130,7 +130,7 @@ async def detect_objects(
     classes_detected = sorted({cls for seg in segments for cls in seg.get("classes", [])})
     total_duration = sum(s["end_seconds"] - s["start_seconds"] for s in segments)
     summary = {
-        "segments": segments,
+        #"segments": segments,
         "classes_detected": classes_detected,
         "total_detections": len(all_detections),
         "total_duration_seconds": round(total_duration, 2),

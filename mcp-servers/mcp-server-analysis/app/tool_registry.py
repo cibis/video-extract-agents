@@ -307,7 +307,7 @@ TOOLS: dict[str, dict] = {
                 "summary": {
                     "type": "object",
                     "properties": {
-                        "segments": {"type": "array"},
+                        #"segments": {"type": "array"},
                         "classes_detected": {"type": "array"},
                         "total_detections": {"type": "integer"},
                         "total_duration_seconds": {"type": "number"},
@@ -428,7 +428,7 @@ TOOLS: dict[str, dict] = {
                         "analyze_scene or detect_objects_vision."
                     ),
                 },
-                "matches": {"type": "array"},
+                #"matches": {"type": "array"},
                 "total_matches": {"type": "integer"},
                 "truncated": {"type": "boolean"},
             },
@@ -742,7 +742,7 @@ TOOLS: dict[str, dict] = {
                 "summary": {
                     "type": "object",
                     "properties": {
-                        "segments": {"type": "array"},
+                        #"segments": {"type": "array"},
                         "events_count": {"type": "integer"},
                         "peak_height_m": {"type": "number"},
                         "total_event_duration_seconds": {"type": "number"},

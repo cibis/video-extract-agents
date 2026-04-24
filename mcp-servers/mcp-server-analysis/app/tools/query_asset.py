@@ -131,7 +131,7 @@ async def write_query_asset(payload: dict[str, Any]) -> dict[str, Any]:
 
     return {
         "result_asset": result_asset,
-        "matches": all_matches[:max_results],
+        #"matches": all_matches[:max_results],
         "total_matches": total,
         "truncated": truncated,
     }

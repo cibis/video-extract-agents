@@ -7,6 +7,7 @@ endpoints:
     - name: "Video Extract Agent"
       apiKey: "${AGENT_API_KEY}"
       baseURL: "${API_GATEWAY_URL}/v1"
+      timeoutMs: 36000000 # 10 hours to allow for long-running video processing
       models:
         default: ["video-extract-agent"]
         fetch: false
