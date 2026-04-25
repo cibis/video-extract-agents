@@ -17,11 +17,11 @@ A prompt-driven video extraction platform. Upload a video, describe what you wan
 
 ## Why This Exists
 
-This project exists because I have a problem. Two problems, actually.
+This project exists because of two problems.
 
-The first: I'm mildly obsessed with agentic AI, the idea that you give a system a goal in plain English and a crew of AI agents figures out how to get there. The second: I have *hours* of kitesurfing footage and zero patience for scrubbing through it frame by frame looking for the good jumps.
+The first: I'm mildly obsessed with agentic AI, the idea that you give a system a goal in plain English and a crew of AI agents figures out how to get there. The second: I have *hours* of kitesurfing footage and zero patience for scrubbing through it frame by frame.
 
-The obvious solution was to build an enterprise-grade, cloud-native, multi-agent video extraction platform. Most people would have just used iMovie. I am not most people.
+The obvious solution was to build an enterprise-grade, cloud-native, multi-agent video extraction platform.
 
 So here we are: a full Azure microservices stack, CrewAI orchestration, MCP tool servers, and FFmpeg keyframe pipelines, all so I can type *"find the jumps"* and go back to the beach.
 
@@ -126,7 +126,7 @@ See [docs/getting-started.md § External agents](docs/getting-started.md#13-exte
 | Frontend | Angular 19 + LibreChat (forked, iframe embed) |
 | API / BFF | Node.js + Express (TypeScript) |
 | AI Orchestration | Python + CrewAI + FastAPI |
-| LLM | Anthropic Claude (via LiteLLM) |
+| LLM | Any LiteLLM-compatible model (Anthropic Claude, OpenAI, AWS Bedrock, and more) |
 | Tool Protocol | MCP over SSE transport |
 | Container Platform | Azure Container Apps + KEDA |
 | Infrastructure as Code | Terraform |
@@ -212,8 +212,15 @@ ANTHROPIC_API_KEY=sk-... scripts/run-e2e-local.sh
 |---|---|
 | [docs/architecture.md](docs/architecture.md) | System design, data flows, service responsibilities, component details, deployment diagrams |
 | [docs/getting-started.md](docs/getting-started.md) | Full setup guide — prerequisites, GitLab/GitHub/Azure configuration, local dev bootstrap, CI/CD variables, secrets reference, troubleshooting |
-| [docs/local-development.md](docs/local-development.md) | Local development notes |
-| [docs/e2e-tests.md](docs/e2e-tests.md) | End-to-end test details |
+| [docs/local-development.md](docs/local-development.md) | Day-to-day local development — starting the stack, running services and tests, common tasks |
+| [docs/e2e-tests.md](docs/e2e-tests.md) | End-to-end pipeline tests |
+| [docs/azure-production-deployment.md](docs/azure-production-deployment.md) | Azure production deployment reference — services, roles, inter-service communication, scaling, CI/CD |
+| [docs/azure-credentials.md](docs/azure-credentials.md) | Azure credentials setup — every credential the platform needs, how to create and configure each |
+| [docs/terraform.md](docs/terraform.md) | Terraform layout, modules, environments, and how the pieces connect |
+| [docs/ai-containers-deep-dive.md](docs/ai-containers-deep-dive.md) | Deep dive into each AI container — inputs, outputs, and position in the job processing sequence |
+| [docs/gitlab-pipeline.md](docs/gitlab-pipeline.md) | CI/CD pipeline — every stage and job, environment lifecycle, and SDLC workflow |
+| [docs/instant-compilation-errors.md](docs/instant-compilation-errors.md) | Getting immediate type and syntax error feedback during local development without Docker rebuilds |
+| [docs/local-containers-report.md](docs/local-containers-report.md) | Local container architecture report |
 | [external-agents/claude-desktop/README.md](external-agents/claude-desktop/README.md) | Claude Desktop MCP integration |
 | [external-agents/librechat/README.md](external-agents/librechat/README.md) | LibreChat official image MCP integration |
 
