@@ -328,7 +328,7 @@ TOOLS: dict[str, dict] = {
                     "description": (
                         "JSONPath expression to apply, e.g. "
                         "'$.frames[*].timestamp_seconds' or "
-                        "'$.high_motion_segments[*]'."
+                        "'$.segments[*]'."
                     ),
                 },
                 "max_results": {

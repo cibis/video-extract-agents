@@ -53,24 +53,19 @@ async def detect_motion_sports(
     for rec in frame_records:
         rec["segment_index"] = -1
 
-    for seg, ev in zip(segments, events):
+    for seg in segments:
         indices = [
             i for i, f in enumerate(frame_records)
             if seg["start_seconds"] <= f["timestamp_seconds"] <= seg["end_seconds"]
         ]
-        first = indices[0] if indices else -1
-        last = indices[-1] if indices else -1
-        seg["first_frame_index"] = first
-        seg["last_frame_index"] = last
-        ev["first_frame_index"] = first
-        ev["last_frame_index"] = last
+        seg["first_frame_index"] = indices[0] if indices else -1
+        seg["last_frame_index"] = indices[-1] if indices else -1
         for pos, frame_idx in enumerate(indices):
             frame_records[frame_idx]["segment_index"] = pos
 
     full_result = {
         "video_url": video_url,
         "peak_motion_score": round(peak_score, 3),
-        "events": events,
         "segments": segments,
         "frames": frame_records,
     }
@@ -86,8 +81,7 @@ async def detect_motion_sports(
 
     total_duration = sum(s["end_seconds"] - s["start_seconds"] for s in segments)
     summary = {
-        "segments": segments,
-        "events_count": len(events),
+        "segments_count": len(segments),
         "peak_motion_score": round(peak_score, 3),
         "total_event_duration_seconds": round(total_duration, 2),
     }

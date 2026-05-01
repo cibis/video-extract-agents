@@ -186,8 +186,8 @@ def make_analysis_agent(model: str, tools: list[Any] | None = None, rpm_limit: i
             "and pass their timestamps to the processing agent for clip extraction. "
             "Do not rely on description text — use matched for all boolean filtering.\n\n"
             "CONTEXT WINDOW DISCIPLINE: Never load full result_asset blob content into your context. "
-            "Use query_asset with a specific JSONPath (e.g. '$.high_motion_segments[*]' or "
-            "'$.frames[?(@.detections)].timestamp_seconds') to retrieve only the values you need."
+            "Use query_asset with a specific JSONPath (e.g. '$.segments[*]' or "
+            "'$.frames[?(@.detection_count > 0)].timestamp_seconds') to retrieve only the values you need."
         ),
         llm=llm,
         i18n=_I18N,

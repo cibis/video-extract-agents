@@ -101,17 +101,34 @@ async def get_unindexed_video_urls(video_urls: list[str]) -> list[str]:
 
 
 async def get_session_assets(session_id: str) -> list[dict[str, Any]]:
-    """Fetch all assets registered under a session."""
+    """Fetch visible (non-hidden) assets registered under a session."""
     pool = await get_pool()
     rows = await pool.fetch(
         """SELECT id, asset_type, blob_url, filename, content_type, source_id, label,
                   metadata_json, description, summary_json, source_job_id, created_at
            FROM session_assets
-           WHERE session_id = $1
+           WHERE session_id = $1 AND session_hidden = false
            ORDER BY created_at""",
         session_id,
     )
     return [dict(r) for r in rows]
+
+
+async def unhide_session_asset_by_url(session_id: str, blob_url: str) -> None:
+    """Reveal a previously-hidden analysis asset when a cache hit confirms it was re-run."""
+    if not session_id or not blob_url:
+        return
+    try:
+        pool = await get_pool()
+        await pool.execute(
+            """UPDATE session_assets
+                  SET session_hidden = false
+                WHERE session_id = $1 AND blob_url = $2 AND session_hidden = true""",
+            session_id,
+            blob_url,
+        )
+    except Exception:
+        pass
 
 
 async def get_job_summary(job_id: str) -> dict[str, Any] | None:
@@ -273,6 +290,7 @@ async def record_job_log(
     call_group_id: str | None = None,
     sequence_num: int = 0,
     error_text: str | None = None,
+    cached: bool = False,
 ) -> None:
     """Insert one row into job_logs. Silently ignores missing job_id or errors."""
     if not job_id:
@@ -284,8 +302,8 @@ async def record_job_log(
             """INSERT INTO job_logs
                (job_id, session_id, service_name, log_type, model_id, tool_name,
                 agent_role, task_name, message, message_type, call_group_id,
-                sequence_num, error_text, created_at)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)""",
+                sequence_num, error_text, created_at, cached)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)""",
             job_id,
             session_id,
             service_name,
@@ -300,6 +318,7 @@ async def record_job_log(
             sequence_num,
             error_text,
             now,
+            cached,
         )
     except Exception:
         import logging as _logging
@@ -426,3 +445,43 @@ async def create_generated_asset(
         description,
     )
     return str(row["id"])
+
+
+# ─── Tool call cache ──────────────────────────────────────────────────────────
+
+async def get_tool_cache(user_id: str, tool_name: str, input_hash: str) -> dict[str, Any] | None:
+    """Return cached tool output for (user_id, tool_name, input_hash), or None on miss."""
+    pool = await get_pool()
+    row = await pool.fetchrow(
+        "SELECT output_json FROM tool_call_cache WHERE user_id=$1 AND tool_name=$2 AND input_hash=$3",
+        user_id,
+        tool_name,
+        input_hash,
+    )
+    if row is None:
+        return None
+    val = row["output_json"]
+    if isinstance(val, str):
+        return json.loads(val)
+    return dict(val)
+
+
+async def set_tool_cache(
+    user_id: str,
+    tool_name: str,
+    input_hash: str,
+    input_json: dict[str, Any],
+    output_json: dict[str, Any],
+) -> None:
+    """Persist a tool call result. Silently ignores conflicts (same result already cached)."""
+    pool = await get_pool()
+    await pool.execute(
+        """INSERT INTO tool_call_cache (user_id, tool_name, input_hash, input_json, output_json)
+           VALUES ($1, $2, $3, $4::jsonb, $5::jsonb)
+           ON CONFLICT (user_id, tool_name, input_hash) DO NOTHING""",
+        user_id,
+        tool_name,
+        input_hash,
+        json.dumps(input_json),
+        json.dumps(output_json),
+    )

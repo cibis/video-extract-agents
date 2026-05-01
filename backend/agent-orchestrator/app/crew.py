@@ -99,6 +99,7 @@ def _kickoff_with_context(
     tool_max_retry_limit: int = 5,
     planner_model: str | None = None,
     planner_rpm_limit: int | None = None,
+    user_id: str | None = None,
 ):
     """Run crew.kickoff() inside the executor thread with job context set for callbacks.
 
@@ -120,7 +121,7 @@ def _kickoff_with_context(
     planner_rpm_limit: RPM cap enforced for LLM calls made in recovery mode (planner model).
     None means unlimited.
     """
-    set_job_context(job_id, session_id)
+    set_job_context(job_id, session_id, user_id)
     set_loop(loop)
     _thread_local.seq_counter = new_counter()
     _thread_local.llm_cycle_count = 0
@@ -549,7 +550,7 @@ async def run_crew(
     try:
         result = await loop.run_in_executor(
             None,
-            lambda: _kickoff_with_context(crew, kickoff_inputs, job_id, session_id, loop, tool_max_retry_limit, planner_model, planner_rpm_limit),
+            lambda: _kickoff_with_context(crew, kickoff_inputs, job_id, session_id, loop, tool_max_retry_limit, planner_model, planner_rpm_limit, user_id),
         )
     finally:
         set_mcp_job_log_queue(None)
@@ -674,26 +675,26 @@ def _describe_analysis_asset(tool_name: str, filename: str, summary: dict | None
         return f"Merged segments list — {n} time intervals. Pass as segments_asset to extract_clips_bulk."
     if tool_name == "detect_objects":
         classes = (summary or {}).get("classes_detected", [])
-        n_segs = len((summary or {}).get("segments", []))
+        n_segs = (summary or {}).get("segments_count", 0)
         n_det = (summary or {}).get("total_detections", 0)
         cls_str = ", ".join(classes) if classes else "unknown"
         return f"YOLO object detection for [{cls_str}] — {n_segs} segments, {n_det} detections"
     if tool_name == "detect_objects_vision":
-        n_segs = len((summary or {}).get("segments", []))
+        n_segs = (summary or {}).get("segments_count", 0)
         return f"Claude vision object detection — {n_segs} segments detected"
     if tool_name == "detect_motion":
-        n_segs = len((summary or {}).get("segments", []))
+        n_segs = (summary or {}).get("segments_count", 0)
         return f"Motion detection (optical flow) — {n_segs} high-motion segments"
     if tool_name == "detect_motion_sports":
-        n_segs = len((summary or {}).get("segments", []))
+        n_segs = (summary or {}).get("segments_count", 0)
         return f"Sports motion detection — {n_segs} events detected"
     if tool_name == "analyze_scene":
         n_frames = (summary or {}).get("frames_analyzed", 0)
         return f"Scene analysis (Claude vision) — {n_frames} frames described"
     if tool_name == "estimate_height_above_surface":
-        n_events = len((summary or {}).get("segments", []))
+        n_segs = (summary or {}).get("segments_count", 0)
         peak = (summary or {}).get("peak_height_m", 0.0)
-        return f"Height above surface (Depth Anything V2) — {n_events} airborne events, peak {peak:.2f} m"
+        return f"Height above surface (Depth Anything V2) — {n_segs} airborne events, peak {peak:.2f} m"
     if tool_name == "transcribe_audio":
         return "Audio transcription (Whisper)"
     if tool_name == "extract_frames":

@@ -4,7 +4,7 @@ Provides blob-backed storage for large intermediate datasets (keyframe indices,
 detection results, frame lists, clip lists) so they never pass through LLM context.
 
 Blob path convention:
-    generated/{session_id}/{job_id}/{data_type}/{filename}
+    generated/{session_id_or_job_id}/{data_type}/{filename}
 """
 import json
 import logging
@@ -19,8 +19,8 @@ logger = logging.getLogger(__name__)
 
 
 def _blob_path(session_id: str | None, job_id: str, data_type: str, filename: str) -> str:
-    scope = session_id or "unscoped"
-    return f"generated/{scope}/{job_id}/{data_type}/{filename}"
+    scope = session_id or job_id or "unscoped"
+    return f"generated/{scope}/{data_type}/{filename}"
 
 
 def _parse_container_blob(url: str) -> tuple[str, str]:

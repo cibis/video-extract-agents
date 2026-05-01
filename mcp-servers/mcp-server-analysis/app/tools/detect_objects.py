@@ -130,7 +130,7 @@ async def detect_objects(
     classes_detected = sorted({cls for seg in segments for cls in seg.get("classes", [])})
     total_duration = sum(s["end_seconds"] - s["start_seconds"] for s in segments)
     summary = {
-        #"segments": segments,
+        "segments_count": len(segments),
         "classes_detected": classes_detected,
         "total_detections": len(all_detections),
         "total_duration_seconds": round(total_duration, 2),

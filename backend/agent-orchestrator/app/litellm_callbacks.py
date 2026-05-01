@@ -218,16 +218,18 @@ _pending_logs: queue.Queue = queue.Queue()
 _thread_local = threading.local()
 
 
-def set_job_context(job_id: str, session_id: str | None) -> None:
+def set_job_context(job_id: str, session_id: str | None, user_id: str | None = None) -> None:
     """Call from the executor thread (inside the kickoff lambda) before kickoff."""
     _thread_local.job_id = job_id
     _thread_local.session_id = session_id
+    _thread_local.user_id = user_id
 
 
 def clear_job_context() -> None:
     """Call from the executor thread after kickoff completes."""
     _thread_local.job_id = None
     _thread_local.session_id = None
+    _thread_local.user_id = None
 
 
 def set_loop(loop: asyncio.AbstractEventLoop) -> None:

@@ -61,6 +61,7 @@ export interface JobLog {
   call_group_id: string;
   sequence_num: number;
   error_text: string | null;
+  cached: boolean;
   created_at: string;
 }
 
@@ -101,6 +102,12 @@ export class ApiService {
 
   getSessionAssets(sessionId: string): Observable<{ assets: SessionAsset[] }> {
     return this.http.get<{ assets: SessionAsset[] }>(`${this.base}/v1/sessions/${sessionId}/assets`);
+  }
+
+  restartSession(sessionId: string): Observable<{ ok: boolean }> {
+    return this.http.post<{ ok: boolean }>(
+      `${this.base}/v1/sessions/${sessionId}/restart`, {}
+    );
   }
 
   getJobSteps(jobId: string): Observable<{ steps: { step_name: string; status: string }[] }> {

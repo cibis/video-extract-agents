@@ -4,6 +4,7 @@ import {
   deleteTestSessions,
   listAllSessionBlobs,
   deleteAllSessions,
+  clearToolCache,
 } from '../services/dbService';
 import { deleteBlob, deleteBlobsByPrefix } from '../services/blobService';
 import { config } from '../config';
@@ -70,8 +71,9 @@ adminRouter.delete('/wipe-test-data', async (req, res, next) => {
 
     const blobsDeleted = await wipeBlobs(blobUrls, blobPrefixes);
     const sessionsDeleted = await deleteTestSessions(userId);
+    const cacheRowsDeleted = await clearToolCache(userId);
 
-    res.json({ sessionsDeleted, blobsDeleted });
+    res.json({ sessionsDeleted, blobsDeleted, cacheRowsDeleted });
   } catch (err) {
     next(err);
   }
@@ -85,8 +87,9 @@ adminRouter.delete('/wipe-all-data', async (req, res, next) => {
 
     const blobsDeleted = await wipeBlobs(blobUrls, blobPrefixes);
     const sessionsDeleted = await deleteAllSessions(userId);
+    const cacheRowsDeleted = await clearToolCache(userId);
 
-    res.json({ sessionsDeleted, blobsDeleted });
+    res.json({ sessionsDeleted, blobsDeleted, cacheRowsDeleted });
   } catch (err) {
     next(err);
   }

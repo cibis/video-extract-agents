@@ -261,6 +261,9 @@ const LOG_PALETTE = [
                               </td>
                               <td class="col-msgtype">
                                 <span class="msg-badge msg-badge--{{ log.message_type.toLowerCase() }}">{{ log.message_type }}</span>
+                                @if (log.cached) {
+                                  <span class="cached-badge" title="Result served from cache">cached</span>
+                                }
                                 @if (tp) {
                                   @let pct = progressPct(tp);
                                   <div class="tool-progress">
@@ -546,6 +549,19 @@ const LOG_PALETTE = [
     .msg-badge--input  { background: #dbeafe; color: #1d4ed8; }
     .msg-badge--output { background: #dcfce7; color: #15803d; }
     .msg-badge--error  { background: #fde8e8; color: #c62828; }
+    .cached-badge {
+      display: inline-block;
+      margin-left: 4px;
+      padding: 1px 5px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      background: #7c3aed22;
+      color: #7c3aed;
+      border: 1px solid #7c3aed55;
+      vertical-align: middle;
+    }
     .data-preview {
       display: block;
       overflow: hidden;

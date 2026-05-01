@@ -171,9 +171,8 @@ TOOLS: dict[str, dict] = {
                 "summary": {
                     "type": "object",
                     "properties": {
-                        "segments": {"type": "array"},
                         "motion_score": {"type": "number"},
-                        "high_motion_segments_count": {"type": "integer"},
+                        "segments_count": {"type": "integer"},
                         "total_motion_duration_seconds": {"type": "number"},
                     },
                 },
@@ -228,18 +227,16 @@ TOOLS: dict[str, dict] = {
                     "type": "string",
                     "description": (
                         "Blob URL of the full motion result. The blob contains: "
-                        "'events' (each with start_seconds, end_seconds, type, first_frame_index, last_frame_index), "
-                        "'segments' (same time ranges as events, also with first_frame_index, last_frame_index), and "
+                        "'segments' (each with start_seconds, end_seconds, video_url, first_frame_index, last_frame_index) and "
                         "'frames' (each with timestamp_seconds, motion_score, url, segment_index — "
-                        "segment_index is the 0-based position of the frame within its event/segment, or -1 if outside all segments). "
+                        "segment_index is the 0-based position of the frame within its segment, or -1 if outside all segments). "
                         "Pass result_asset to write_query_asset to filter frames for frontier tools."
                     ),
                 },
                 "summary": {
                     "type": "object",
                     "properties": {
-                        "segments": {"type": "array"},
-                        "events_count": {"type": "integer"},
+                        "segments_count": {"type": "integer"},
                         "peak_motion_score": {"type": "number"},
                         "total_event_duration_seconds": {"type": "number"},
                     },
@@ -307,7 +304,7 @@ TOOLS: dict[str, dict] = {
                 "summary": {
                     "type": "object",
                     "properties": {
-                        #"segments": {"type": "array"},
+                        "segments_count": {"type": "integer"},
                         "classes_detected": {"type": "array"},
                         "total_detections": {"type": "integer"},
                         "total_duration_seconds": {"type": "number"},
@@ -342,7 +339,7 @@ TOOLS: dict[str, dict] = {
                     "description": (
                         "JSONPath expression to apply, e.g. "
                         "'$.frames[*].timestamp_seconds' or "
-                        "'$.high_motion_segments[*]'."
+                        "'$.segments[*]'."
                     ),
                 },
                 "max_results": {
@@ -730,20 +727,18 @@ TOOLS: dict[str, dict] = {
                     "description": (
                         "Blob URL of the full height analysis result. The blob contains: "
                         "'peak_height_m' (float), "
-                        "'events' (each with start_seconds, end_seconds, type, peak_height_m, first_frame_index, last_frame_index), "
-                        "'segments' (same time ranges as events, also with first_frame_index, last_frame_index), and "
+                        "'segments' (each with start_seconds, end_seconds, peak_height_m, video_url, first_frame_index, last_frame_index), and "
                         "'frames' (each with timestamp_seconds, height_m, horizon_frac, url, segment_index — "
                         "height_m is the tilt-corrected camera height in metres; "
                         "horizon_frac is the detected horizon row as a fraction of frame height (0=top, 1=bottom), or null if no horizon found; "
-                        "segment_index is the 0-based position of the frame within its event/segment, or -1 if outside all segments). "
+                        "segment_index is the 0-based position of the frame within its segment, or -1 if outside all segments). "
                         "Pass result_asset to write_query_asset to filter frames for further analysis."
                     ),
                 },
                 "summary": {
                     "type": "object",
                     "properties": {
-                        #"segments": {"type": "array"},
-                        "events_count": {"type": "integer"},
+                        "segments_count": {"type": "integer"},
                         "peak_height_m": {"type": "number"},
                         "total_event_duration_seconds": {"type": "number"},
                     },
