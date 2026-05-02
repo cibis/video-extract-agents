@@ -337,6 +337,22 @@ async def get_app_setting(key: str) -> str | None:
         return None
 
 
+async def get_model_context_window(model_name: str) -> dict | None:
+    """Return {context_window_tokens, safety_margin, compression_threshold} for model_name, or None."""
+    try:
+        pool = await get_pool()
+        row = await pool.fetchrow(
+            "SELECT context_window_tokens, safety_margin, compression_threshold "
+            "FROM model_context_windows WHERE model_name = $1",
+            model_name,
+        )
+        return dict(row) if row else None
+    except Exception:
+        import logging as _logging
+        _logging.getLogger(__name__).warning("get_model_context_window(%s) failed", model_name, exc_info=True)
+        return None
+
+
 async def record_job_step(
     job_id: str,
     step_name: str,

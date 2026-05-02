@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+import threading
 import uuid
 from typing import Any, Callable
 
@@ -18,6 +19,7 @@ _MODEL_ID = "depth-anything/Depth-Anything-V2-Metric-Outdoor-Small-hf"
 
 _depth_processor = None
 _depth_model = None
+_depth_model_lock = threading.Lock()
 
 # Depth Anything V2 returns near-zero values for sky / infinitely distant pixels.
 # Rows whose median depth is below this threshold are treated as sky when detecting
@@ -28,19 +30,22 @@ _SKY_DEPTH_THRESHOLD_M = 1.0
 def _load_depth_model() -> tuple:
     """Lazy-load Depth Anything V2 Metric singleton. Must be called from a thread executor."""
     global _depth_processor, _depth_model
-    if _depth_model is not None:
+    if _depth_model is not None:          # fast path — no lock after first load
         return _depth_processor, _depth_model
-    try:
-        from transformers import AutoImageProcessor, AutoModelForDepthEstimation
-        _depth_processor = AutoImageProcessor.from_pretrained(_MODEL_ID)
-        _depth_model = AutoModelForDepthEstimation.from_pretrained(_MODEL_ID)
-        _depth_model.eval()
-        return _depth_processor, _depth_model
-    except Exception as exc:
-        raise RuntimeError(
-            f"estimate_height_above_surface requires the transformers package and "
-            f"Depth Anything V2 weights which failed to load: {exc}"
-        ) from exc
+    with _depth_model_lock:
+        if _depth_model is not None:      # double-checked locking
+            return _depth_processor, _depth_model
+        try:
+            from transformers import AutoImageProcessor, AutoModelForDepthEstimation
+            _depth_processor = AutoImageProcessor.from_pretrained(_MODEL_ID)
+            _depth_model = AutoModelForDepthEstimation.from_pretrained(_MODEL_ID)
+            _depth_model.eval()
+            return _depth_processor, _depth_model
+        except Exception as exc:
+            raise RuntimeError(
+                f"estimate_height_above_surface requires the transformers package and "
+                f"Depth Anything V2 weights which failed to load: {exc}"
+            ) from exc
 
 
 def _run_depth_inference(img_bgr: np.ndarray) -> np.ndarray:
@@ -79,16 +84,16 @@ def _detect_horizon_frac(depth_map: np.ndarray) -> float | None:
     or scene with no sky) or when the entire frame is sky. In both cases the
     caller falls back to a horizontal-camera assumption.
     """
-    h = depth_map.shape[0]
+    row_medians = np.median(depth_map, axis=1)  # shape (H,) — single C call
     # No sky at all — first row already ground-depth. Return None so the
     # caller falls back to the horizontal assumption rather than interpreting
     # horizon_frac=0.0 as "camera pointing upward 30°".
-    if np.median(depth_map[0, :]) > _SKY_DEPTH_THRESHOLD_M:
+    if row_medians[0] > _SKY_DEPTH_THRESHOLD_M:
         return None
-    for row_idx in range(h):
-        if np.median(depth_map[row_idx, :]) > _SKY_DEPTH_THRESHOLD_M:
-            return row_idx / h
-    return None
+    hits = np.where(row_medians > _SKY_DEPTH_THRESHOLD_M)[0]
+    if hits.size == 0:
+        return None
+    return int(hits[0]) / depth_map.shape[0]
 
 
 def _tilt_corrected_height(
@@ -300,7 +305,7 @@ async def _compute_heights(
             "estimate_height_above_surface requires opencv-python which is not installed"
         )
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     frame_records: list[dict] = []
 
     for batch_start in range(0, len(frames), frame_batch_size):
@@ -311,27 +316,39 @@ async def _compute_heights(
             return_exceptions=True,
         )
 
+        # Decode all images for this batch (fast, stays on the event-loop thread)
+        batch_items: list[tuple[dict, np.ndarray]] = []
         for frame_info, frame_bytes in zip(batch, frame_bytes_list):
             if isinstance(frame_bytes, Exception) or not frame_bytes:
                 continue
-
             img_data = np.frombuffer(frame_bytes, dtype=np.uint8)
             img = cv2.imdecode(img_data, cv2.IMREAD_COLOR)
             if img is None:
                 continue
+            batch_items.append((frame_info, img))
 
+        # Dispatch all inference calls concurrently into the thread pool.
+        # PyTorch releases the GIL during linear-algebra, so threads run in
+        # parallel across cores. OMP_NUM_THREADS=2 in the container caps each
+        # call's OpenMP workers so multiple calls can share the CPU without
+        # fighting over the full core count.
+        depth_results = await asyncio.gather(
+            *[loop.run_in_executor(None, _run_depth_inference, img) for _, img in batch_items],
+            return_exceptions=True,
+        )
+
+        for (frame_info, _img), depth_result in zip(batch_items, depth_results):
             timestamp = float(frame_info.get("timestamp_seconds", 0.0))
             url = frame_info.get("url", "")
 
-            try:
-                depth_map = await loop.run_in_executor(None, _run_depth_inference, img)
-            except Exception as exc:
+            if isinstance(depth_result, Exception):
                 logger.warning(
                     "estimate_height_above_surface: inference failed at %.2fs: %s",
-                    timestamp, exc,
+                    timestamp, depth_result,
                 )
                 continue
 
+            depth_map: np.ndarray = depth_result
             h = depth_map.shape[0]
             surface_rows = max(1, int(h * surface_sample_pct))
             raw_depth_m = float(np.median(depth_map[-surface_rows:, :]))

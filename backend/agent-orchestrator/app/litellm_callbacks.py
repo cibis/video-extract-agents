@@ -217,6 +217,110 @@ _pending_logs: queue.Queue = queue.Queue()
 # Per-thread job context set inside the executor thread before kickoff
 _thread_local = threading.local()
 
+# Number of messages at the tail of the conversation always kept out of compression
+_COMPRESSION_KEEP_LAST = 10
+
+
+def _compress_messages(messages: list, model: str, original_fn) -> tuple[list, str]:
+    """Compress the middle portion of messages using the planner model.
+
+    Keeps messages[0] (system prompt) and the last _COMPRESSION_KEEP_LAST messages
+    untouched. Everything in between is summarised into a single user message.
+    Returns (new_messages, summary_text). Returns (messages, "") if nothing to compress.
+    """
+    keep_head = messages[:1]
+    keep_tail = messages[-_COMPRESSION_KEEP_LAST:] if len(messages) > _COMPRESSION_KEEP_LAST + 1 else []
+    to_compress = messages[1: len(messages) - len(keep_tail)]
+    if not to_compress:
+        return messages, ""
+
+    formatted = "\n".join(
+        f"[{m.get('role', '?').upper()}]: {m.get('content', '')}"
+        for m in to_compress
+        if isinstance(m.get("content"), str)
+    )
+    compression_prompt = (
+        "You are compressing an AI agent conversation to free context window space. "
+        "Write a concise factual summary preserving: all blob/asset URLs exactly as they appear, "
+        "all numerical results (counts, heights, durations, timestamps), all tool outcomes, "
+        "and the current state of the analysis (what has been done, what remains). "
+        "No role labels — plain paragraph only.\n\n"
+        f"Messages to summarize:\n{formatted}"
+    )
+    planner = getattr(_thread_local, "recovery_model", None) or model
+    resp = original_fn(
+        model=planner,
+        messages=[{"role": "user", "content": compression_prompt}],
+        temperature=0,
+    )
+    summary = resp.choices[0].message.content or ""
+    n = len(to_compress)
+    compressed_msg = {"role": "user", "content": f"[CONTEXT SUMMARY — {n} messages compressed]\n{summary}"}
+    return keep_head + [compressed_msg] + keep_tail, summary
+
+
+def _log_compression(
+    original_tokens: int,
+    threshold_tokens: int,
+    original_msg_count: int,
+    model: str,
+    summary: str,
+) -> None:
+    """Write a paired context_compression log entry to job_logs (Input + Output)."""
+    job_id = getattr(_thread_local, "job_id", None)
+    if not job_id:
+        return
+    session_id = getattr(_thread_local, "session_id", None)
+    counter = getattr(_thread_local, "seq_counter", None)
+    planner = getattr(_thread_local, "recovery_model", None) or model
+    call_group_id = str(uuid.uuid4())
+
+    input_msg = json.dumps({
+        "model": model,
+        "original_tokens": original_tokens,
+        "threshold_tokens": threshold_tokens,
+        "compressed_messages": original_msg_count,
+        "compression_model": planner,
+    })
+    seq_input = next(counter) if counter is not None else 0
+    seq_output = next(counter) if counter is not None else 0
+
+    _loop = getattr(_thread_local, "event_loop", None)
+
+    def _queue_or_schedule(entry: dict) -> None:
+        if _loop is not None and _loop.is_running():
+            from app.db import record_job_log
+            asyncio.run_coroutine_threadsafe(record_job_log(**entry), _loop)
+        else:
+            _pending_logs.put(entry)
+
+    _queue_or_schedule({
+        "job_id": job_id,
+        "session_id": session_id,
+        "service_name": settings.service_name,
+        "log_type": "context_compression",
+        "model_id": planner,
+        "tool_name": None,
+        "message": input_msg,
+        "message_type": "Input",
+        "call_group_id": call_group_id,
+        "sequence_num": seq_input,
+        "error_text": None,
+    })
+    _queue_or_schedule({
+        "job_id": job_id,
+        "session_id": session_id,
+        "service_name": settings.service_name,
+        "log_type": "context_compression",
+        "model_id": planner,
+        "tool_name": None,
+        "message": summary,
+        "message_type": "Output",
+        "call_group_id": call_group_id,
+        "sequence_num": seq_output,
+        "error_text": None,
+    })
+
 
 def set_job_context(job_id: str, session_id: str | None, user_id: str | None = None) -> None:
     """Call from the executor thread (inside the kickoff lambda) before kickoff."""
@@ -394,6 +498,32 @@ def wrap_litellm_completion() -> Generator[None, None, None]:
         if isinstance(messages, list) and messages and messages[-1].get("role") == "assistant":
             logger.debug("_record_completion: messages end with assistant — appending user turn")
             kwargs["messages"] = messages + [{"role": "user", "content": "Continue."}]
+
+        # Context window compression: if the messages list exceeds the per-model
+        # threshold, compress the middle messages using the planner model before
+        # making the real call. Uses _original directly to avoid recursion.
+        context_windows = getattr(_thread_local, "context_windows", {})
+        messages = kwargs.get("messages")
+        model_for_cw = kwargs.get("model") or (args[0] if args else None)
+        if (
+            isinstance(messages, list)
+            and len(messages) > _COMPRESSION_KEEP_LAST + 1
+            and model_for_cw in context_windows
+        ):
+            import litellm as _lm
+            token_count = _lm.token_counter(model=model_for_cw, messages=messages)
+            cw_info = context_windows[model_for_cw]
+            per_model_threshold = cw_info.get("compression_threshold", settings.context_compression_threshold)
+            threshold_tokens = int(cw_info["context_window_tokens"] * per_model_threshold)
+            if token_count > threshold_tokens:
+                logger.info(
+                    "_record_completion: context %d tokens > threshold %d — compressing",
+                    token_count, threshold_tokens,
+                )
+                new_messages, summary = _compress_messages(messages, model_for_cw, _original)
+                if summary:
+                    _log_compression(token_count, threshold_tokens, len(messages), model_for_cw, summary)
+                    kwargs["messages"] = new_messages
 
         result = None
         exc = None

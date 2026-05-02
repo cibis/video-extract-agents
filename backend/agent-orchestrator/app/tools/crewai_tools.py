@@ -51,7 +51,7 @@ _JSON_SCHEMA_TYPE_MAP: dict[str, type] = {
 _CREWAI_INTERNAL_KEYS = {"metadata", "security_context"}
 
 # Keys excluded from the cache key so the same tool+input matches across sessions/jobs.
-_CACHE_IGNORE_KEYS = {"job_id", "session_id"}
+_CACHE_IGNORE_KEYS = {"job_id", "session_id", "frame_batch_size"}
 
 
 def _compute_cache_key(payload: dict[str, Any]) -> str:

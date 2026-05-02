@@ -239,6 +239,12 @@ services:
     build:
       context: ../../backend/preprocessing-worker
       dockerfile: Dockerfile
+    tmpfs:
+      - /tmp:size=2g,mode=1777
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     environment:
       <<: *common-python-env
     depends_on:
@@ -261,6 +267,11 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8100:8100"
+    shm_size: '2gb'
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     environment:
       <<: *common-env
       AZURE_STORAGE_CONNECTION_STRING: ${AZURE_STORAGE_CONNECTION_STRING:-DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;}
@@ -276,6 +287,8 @@ services:
       SERVICE_NAME: mcp-server-analysis
       LOG_LEVEL: "debug"
       HOME: /tmp
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
     depends_on:
       postgresql:
         condition: service_healthy

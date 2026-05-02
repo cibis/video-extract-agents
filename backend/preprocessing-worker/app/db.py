@@ -48,6 +48,24 @@ async def update_video_status(video_id: str, status: str) -> None:
     )
 
 
+async def get_stuck_videos(min_age_seconds: int = 60) -> list[dict]:
+    """Return videos stuck in 'uploaded' state for longer than min_age_seconds.
+
+    Used at startup to recover videos whose VIDEO_UPLOADED Service Bus message
+    was lost (e.g. container restart before the message was consumed).
+    Already-indexed videos are never returned.
+    """
+    pool = await get_pool()
+    rows = await pool.fetch(
+        """SELECT id, user_id, original_url, session_id
+           FROM videos
+           WHERE status = 'uploaded'
+             AND created_at < NOW() - ($1 * INTERVAL '1 second')""",
+        min_age_seconds,
+    )
+    return [dict(r) for r in rows]
+
+
 async def create_session_asset(
     session_id: str,
     asset_type: str,

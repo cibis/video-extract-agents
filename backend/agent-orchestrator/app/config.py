@@ -16,6 +16,11 @@ class Settings(BaseSettings):
     # Can be overridden at runtime via the app_settings DB table (key: agent_rpm_limit).
     agent_rpm_limit: int | None = 4
 
+    # Fraction of a model's context_window_tokens at which automatic context compression fires.
+    # Per-model override: set compression_threshold on the model_context_windows row.
+    # Global fallback: this env var (CONTEXT_COMPRESSION_THRESHOLD).
+    context_compression_threshold: float = 0.7
+
     @field_validator("agent_rpm_limit", mode="before")
     @classmethod
     def _parse_agent_rpm(cls, v: object) -> object:
