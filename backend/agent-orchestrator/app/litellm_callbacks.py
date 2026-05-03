@@ -133,6 +133,13 @@ def guard_tool_usage_errors(limit: int) -> Generator[None, None, None]:
     _counts: dict[str, int] = {}  # tool_name → consecutive failure count
 
     def _guarded_use(self, calling, tool_string: str) -> str:
+        # Hard stop: raise from ToolUsage.use() context, not from litellm.completion.
+        # Exceptions from ToolUsage.use() propagate through crew.kickoff();
+        # exceptions from litellm.completion are caught internally by CrewAI.
+        _exceeded = getattr(_thread_local, "call_limit_exceeded_msg", None)
+        if _exceeded:
+            raise LlmCallLimitExceeded(_exceeded)
+
         tool_name = (
             getattr(calling, "tool_name", None)
             or getattr(getattr(self, "action", None), "tool", None)
@@ -507,6 +514,13 @@ def wrap_litellm_completion() -> Generator[None, None, None]:
     _original = _litellm.completion
 
     def _record_completion(*args, **kwargs):
+        # Bail immediately if the call limit was exceeded on a prior call.
+        # Raising here prevents unnecessary API calls, but CrewAI's LLM wrapper
+        # still catches it. The authoritative abort raise is in _guarded_use.
+        _exceeded_msg = getattr(_thread_local, "call_limit_exceeded_msg", None)
+        if _exceeded_msg:
+            raise LlmCallLimitExceeded(_exceeded_msg)
+
         # Recovery mechanism: when guard_tool_usage_errors activates recovery mode,
         # override the model with the planner model for all subsequent LLM calls
         # and enforce the planner_rpm_limit using a sliding 60-second window.
@@ -809,13 +823,17 @@ def wrap_litellm_completion() -> Generator[None, None, None]:
                                 asyncio.run_coroutine_threadsafe(record_job_log(**_limit_entry), _loop2)
                             else:
                                 _pending_logs.put(_limit_entry)
-                        raise LlmCallLimitExceeded(_limit_msg)
+                        # Store the flag — raising here is caught by CrewAI's LLM wrapper.
+                        # The actual abort raise happens in _guarded_use (ToolUsage.use context)
+                        # which propagates outside CrewAI's internal retry handler.
+                        _thread_local.call_limit_exceeded_msg = _limit_msg
 
     # Reset per-job compression state and call counters so a job running on a reused
     # thread does not inherit stale state from the previous job on this thread.
     _thread_local.compressed_head = None
     _thread_local.n_crewai_at_compression = 0
     _thread_local.llm_call_counts = {}  # model → call count this job
+    _thread_local.call_limit_exceeded_msg = None
 
     _litellm.completion = _record_completion
     try:
