@@ -74,6 +74,10 @@ class LlmCyclingLimitExceeded(Exception):
     """Raised when tool_max_retry_limit consecutive LLM calls produce no successful tool use."""
 
 
+class LlmCallLimitExceeded(Exception):
+    """Raised when a model exceeds max_calls_per_job for the current job."""
+
+
 def _is_failed_tool_result(calling, result: str) -> bool:
     """Return True when a ToolUsage.use() call represents a failure.
 
@@ -763,10 +767,55 @@ def wrap_litellm_completion() -> Generator[None, None, None]:
                         f"(limit: {llm_cycle_limit})"
                     )
 
-    # Reset per-job compression state so a job running on a reused thread does not
-    # inherit a stale compressed head from the previous job on this thread.
+            # Hard stop: per-model call count vs max_calls_per_job (read from DB via context_windows).
+            # Runs after logging so the triggering call is always recorded first.
+            _cw = getattr(_thread_local, "context_windows", {})
+            _call_model = kwargs.get("model", args[0] if args else None)
+            if _call_model and _call_model in _cw:
+                _max_calls = _cw[_call_model].get("max_calls_per_job")
+                if _max_calls:
+                    _counts = getattr(_thread_local, "llm_call_counts", {})
+                    _counts[_call_model] = _counts.get(_call_model, 0) + 1
+                    _thread_local.llm_call_counts = _counts
+                    if _counts[_call_model] >= _max_calls:
+                        _limit_msg = (
+                            f"Job terminated: model '{_call_model}' has made "
+                            f"{_counts[_call_model]} LLM calls in this job, reaching the "
+                            f"hard stop limit of {_max_calls} calls per job. "
+                            "The job was aborted to prevent runaway execution. "
+                            "Review the session history for repeated compression or tool-retry loops."
+                        )
+                        logger.error("_record_completion: %s", _limit_msg)
+                        _job_id2 = getattr(_thread_local, "job_id", None)
+                        _session_id2 = getattr(_thread_local, "session_id", None)
+                        _counter2 = getattr(_thread_local, "seq_counter", None)
+                        _loop2 = getattr(_thread_local, "event_loop", None)
+                        if _job_id2:
+                            _limit_entry = {
+                                "job_id": _job_id2,
+                                "session_id": _session_id2,
+                                "service_name": settings.service_name,
+                                "log_type": "error",
+                                "model_id": _call_model,
+                                "tool_name": None,
+                                "message": _limit_msg,
+                                "message_type": "Error",
+                                "call_group_id": str(uuid.uuid4()),
+                                "sequence_num": next(_counter2) if _counter2 else 0,
+                                "error_text": _limit_msg,
+                            }
+                            if _loop2 is not None and _loop2.is_running():
+                                from app.db import record_job_log
+                                asyncio.run_coroutine_threadsafe(record_job_log(**_limit_entry), _loop2)
+                            else:
+                                _pending_logs.put(_limit_entry)
+                        raise LlmCallLimitExceeded(_limit_msg)
+
+    # Reset per-job compression state and call counters so a job running on a reused
+    # thread does not inherit stale state from the previous job on this thread.
     _thread_local.compressed_head = None
     _thread_local.n_crewai_at_compression = 0
+    _thread_local.llm_call_counts = {}  # model → call count this job
 
     _litellm.completion = _record_completion
     try:

@@ -342,7 +342,7 @@ async def get_model_context_window(model_name: str) -> dict | None:
     try:
         pool = await get_pool()
         row = await pool.fetchrow(
-            "SELECT context_window_tokens, safety_margin, compression_threshold "
+            "SELECT context_window_tokens, safety_margin, compression_threshold, max_calls_per_job "
             "FROM model_context_windows WHERE model_name = $1",
             model_name,
         )
