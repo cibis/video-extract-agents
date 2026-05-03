@@ -249,7 +249,7 @@ INSERT INTO model_context_windows (model_name, context_window_tokens, safety_mar
     ('anthropic/claude-haiku-4-5-20251001',       200000, 0.5, 0.7, 'Claude Haiku 4.5 (direct Anthropic API)'),
     ('openai/gpt-4o',                             128000, 0.5, 0.7, 'GPT-4o (OpenAI API)'),
     ('openai/gpt-4o-mini',                        128000, 0.5, 0.7, 'GPT-4o Mini (OpenAI API)'),
-    ('bedrock/us.amazon.nova-2-lite-v1:0',        300000, 0.7, 0.5, 'Amazon Nova 2 Lite (Bedrock)'),
+    ('bedrock/us.amazon.nova-2-lite-v1:0',        300000, 0.7, 0.08, 'Amazon Nova 2 Lite (Bedrock)'),
     ('bedrock/us.anthropic.claude-opus-4-5-v1:0', 200000, 0.5, 0.7, 'Claude Opus 4.5 (Bedrock)'),
     ('bedrock/openai.gpt-oss-120b-1:0',           128000, 0.5, 0.7, 'GPT OSS 120B (Bedrock)')
 ON CONFLICT (model_name) DO NOTHING;
@@ -304,7 +304,7 @@ INSERT INTO model_context_windows (model_name, context_window_tokens, safety_mar
     ('anthropic/claude-haiku-4-5-20251001',       200000, 0.5, 0.7, 'Claude Haiku 4.5 (direct Anthropic API)'),
     ('openai/gpt-4o',                             128000, 0.5, 0.7, 'GPT-4o (OpenAI API)'),
     ('openai/gpt-4o-mini',                        128000, 0.5, 0.7, 'GPT-4o Mini (OpenAI API)'),
-    ('bedrock/us.amazon.nova-2-lite-v1:0',        300000, 0.7, 0.5, 'Amazon Nova 2 Lite (Bedrock)'),
+    ('bedrock/us.amazon.nova-2-lite-v1:0',        300000, 0.7, 0.08, 'Amazon Nova 2 Lite (Bedrock)'),
     ('bedrock/us.anthropic.claude-opus-4-5-v1:0', 200000, 0.5, 0.7, 'Claude Opus 4.5 (Bedrock)'),
     ('bedrock/openai.gpt-oss-120b-1:0',           128000, 0.5, 0.7, 'GPT OSS 120B (Bedrock)')
 ON CONFLICT (model_name) DO UPDATE SET

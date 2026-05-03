@@ -68,6 +68,7 @@ async def transcribe_audio(payload: dict[str, Any]) -> dict[str, Any]:
             "text": seg.get("text", ""),
         }
         for seg in result.get("segments", [])
+        if seg.get("end", 0.0) > seg.get("start", 0.0)
     ]
 
     full_result = {

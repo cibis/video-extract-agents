@@ -44,6 +44,7 @@ async def detect_motion(
     segments = [
         {"start_seconds": seg["start"], "end_seconds": seg["end"], "video_url": video_url}
         for seg in high_motion
+        if seg["end"] > seg["start"]
     ]
 
     for rec in frame_records:

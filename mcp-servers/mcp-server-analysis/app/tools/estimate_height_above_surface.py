@@ -238,6 +238,7 @@ async def estimate_height_above_surface(
     segments = [
         {"start_seconds": ev["start_seconds"], "end_seconds": ev["end_seconds"], "peak_height_m": ev["peak_height_m"], "video_url": video_url}
         for ev in events
+        if ev["end_seconds"] > ev["start_seconds"]
     ]
 
     for rec in frame_records:

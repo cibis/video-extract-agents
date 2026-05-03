@@ -48,6 +48,7 @@ async def detect_motion_sports(
     segments = [
         {"start_seconds": ev["start_seconds"], "end_seconds": ev["end_seconds"], "video_url": video_url}
         for ev in events
+        if ev["end_seconds"] > ev["start_seconds"]
     ]
 
     for rec in frame_records:
