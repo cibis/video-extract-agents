@@ -107,6 +107,7 @@ junit.xml
 *.mkv
 
 # ── Private / local-only docs & scripts ───────────────────────────────────
+docs/_*
 docs/_github-push.md
 scripts/push-github.sh
 scripts/credentials.sh

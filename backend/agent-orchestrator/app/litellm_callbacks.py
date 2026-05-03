@@ -217,17 +217,161 @@ _pending_logs: queue.Queue = queue.Queue()
 # Per-thread job context set inside the executor thread before kickoff
 _thread_local = threading.local()
 
+def _compress_messages(messages: list, model: str, original_fn) -> tuple[list, str]:
+    """Compress the full conversation history using the planner model.
 
-def set_job_context(job_id: str, session_id: str | None) -> None:
+    Keeps messages[0] (system prompt) and messages[1] (initial task + planner plan)
+    unchanged. Only the subsequent action/observation turns are compressed into a
+    single structured task-state summary.
+    Returns (new_messages, summary_text). Returns (messages, "") if nothing to compress.
+    """
+    if len(messages) < 3:
+        return messages, ""
+
+    keep_head = messages[:2]
+    to_compress = messages[2:]
+
+    formatted = "\n".join(
+        f"[{m.get('role', '?').upper()}]: {m.get('content', '')}"
+        for m in to_compress
+        if isinstance(m.get("content"), str)
+    )
+    compression_prompt = (
+        "You are compressing an AI agent's conversation history to free context window space.\n"
+        "The agent has access to tools defined in its system prompt. Your summary must allow it to continue using those tools.\n\n"
+        "CRITICAL RULES — violating any of these will break the agent:\n"
+        "1. NEVER reproduce the following ReAct keywords in your output: "
+        "'Final Answer', 'I now know the final answer', 'Thought:', 'Action:', 'Action Input:', 'Observation:'.\n"
+        "   If the history contains 'Final Answer' or 'I now know the final answer' text, "
+        "this means the agent attempted to end the task prematurely but FAILED — the task is still running.\n"
+        "   Treat it as a completed tool step, NOT as the current outcome.\n"
+        "2. REMAINING WORK must always contain at least one item. "
+        "If the task were truly complete, this compression would not be happening.\n"
+        "3. Preserve all blob/asset URLs character-for-character — never paraphrase or shorten a URL.\n\n"
+        "Write the summary using EXACTLY these four sections:\n\n"
+        "COMPLETED STEPS:\n"
+        "List every tool call made and its result. For each: tool name, key outcome, and result asset URL if any.\n\n"
+        "KEY DATA:\n"
+        "All numerical findings: counts, heights, durations, timestamps, segment boundaries, scores.\n\n"
+        "CURRENT STATE:\n"
+        "One sentence: what the agent has established so far (do NOT use 'Final Answer' language).\n\n"
+        "REMAINING WORK:\n"
+        "Explicit list of what still needs to be done, naming the exact tools to call next. Must not be empty.\n\n"
+        "Strip completely: verbose reasoning, repeated observations, raw frame listings, intermediate deliberation, "
+        "and any ReAct-format keywords listed in rule 1 above.\n\n"
+        f"Conversation history to compress:\n{formatted}"
+    )
+    planner = getattr(_thread_local, "recovery_model", None) or model
+    resp = original_fn(
+        model=planner,
+        messages=[{"role": "user", "content": compression_prompt}],
+        temperature=0,
+    )
+    summary = resp.choices[0].message.content or ""
+    # Scrub any hallucinated "Final Answer" / "I now know the final answer" lines
+    # that Haiku may reproduce verbatim from the history despite the instruction above.
+    # Nova interprets these phrases as a terminal state and restarts the task from scratch.
+    import re as _re
+    _forbidden = _re.compile(
+        r'^[^\n]*(?:Final\s+Answer|I\s+now\s+know\s+the\s+final\s+answer)[^\n]*$',
+        _re.IGNORECASE | _re.MULTILINE,
+    )
+    summary = _forbidden.sub('', summary)
+    summary = _re.sub(r'\n{3,}', '\n\n', summary).strip()
+    compressed_msg = {
+        "role": "user",
+        "content": (
+            f"[CONTEXT COMPRESSED — {len(to_compress)} messages replaced with task state summary]\n"
+            "Your full tool catalogue remains in the system prompt above. Continue the task using the summary below.\n\n"
+            + summary
+        ),
+    }
+    return keep_head + [compressed_msg], summary
+
+
+def _log_compression(
+    original_tokens: int,
+    threshold_tokens: int,
+    messages_before: list,
+    messages_after: list,
+    model: str,
+) -> None:
+    """Write a paired context_compression log entry to job_logs (Input + Output).
+
+    Input message  = full messages array sent to the agent before compression.
+    Output message = full messages array the agent will receive after compression.
+    Both are stored as JSON so the session history renders them identically to
+    llm_call entries, making the before/after context directly inspectable.
+    """
+    job_id = getattr(_thread_local, "job_id", None)
+    if not job_id:
+        return
+    session_id = getattr(_thread_local, "session_id", None)
+    counter = getattr(_thread_local, "seq_counter", None)
+    planner = getattr(_thread_local, "recovery_model", None) or model
+    call_group_id = str(uuid.uuid4())
+
+    try:
+        input_msg = json.dumps(messages_before, ensure_ascii=False)
+    except Exception:
+        input_msg = str(messages_before)
+    try:
+        output_msg = json.dumps(messages_after, ensure_ascii=False)
+    except Exception:
+        output_msg = str(messages_after)
+
+    seq_input = next(counter) if counter is not None else 0
+    seq_output = next(counter) if counter is not None else 0
+
+    _loop = getattr(_thread_local, "event_loop", None)
+
+    def _queue_or_schedule(entry: dict) -> None:
+        if _loop is not None and _loop.is_running():
+            from app.db import record_job_log
+            asyncio.run_coroutine_threadsafe(record_job_log(**entry), _loop)
+        else:
+            _pending_logs.put(entry)
+
+    _queue_or_schedule({
+        "job_id": job_id,
+        "session_id": session_id,
+        "service_name": settings.service_name,
+        "log_type": "context_compression",
+        "model_id": planner,
+        "tool_name": None,
+        "message": input_msg,
+        "message_type": "Input",
+        "call_group_id": call_group_id,
+        "sequence_num": seq_input,
+        "error_text": None,
+    })
+    _queue_or_schedule({
+        "job_id": job_id,
+        "session_id": session_id,
+        "service_name": settings.service_name,
+        "log_type": "context_compression",
+        "model_id": planner,
+        "tool_name": None,
+        "message": output_msg,
+        "message_type": "Output",
+        "call_group_id": call_group_id,
+        "sequence_num": seq_output,
+        "error_text": None,
+    })
+
+
+def set_job_context(job_id: str, session_id: str | None, user_id: str | None = None) -> None:
     """Call from the executor thread (inside the kickoff lambda) before kickoff."""
     _thread_local.job_id = job_id
     _thread_local.session_id = session_id
+    _thread_local.user_id = user_id
 
 
 def clear_job_context() -> None:
     """Call from the executor thread after kickoff completes."""
     _thread_local.job_id = None
     _thread_local.session_id = None
+    _thread_local.user_id = None
 
 
 def set_loop(loop: asyncio.AbstractEventLoop) -> None:
@@ -389,9 +533,65 @@ def wrap_litellm_completion() -> Generator[None, None, None]:
         # CrewAI's ReAct retry logic fails to append a closing user message after
         # a tool error observation. Append a minimal user turn to fix it silently.
         messages = kwargs.get("messages")
+        # Capture CrewAI's raw message count before any modifications — used below to
+        # identify which messages are "new" since the last compression round.
+        n_crewai_len = len(messages) if isinstance(messages, list) else 0
         if isinstance(messages, list) and messages and messages[-1].get("role") == "assistant":
             logger.debug("_record_completion: messages end with assistant — appending user turn")
             kwargs["messages"] = messages + [{"role": "user", "content": "Continue."}]
+
+        # Re-inject compressed state: CrewAI rebuilds its full message history from
+        # internal state on every call, so the kwargs["messages"] = new_messages
+        # assignment inside the compression block below only affects the current call.
+        # On the next call CrewAI sends the original uncompressed history again,
+        # triggering re-compression in a loop.
+        # Fix: after each compression we store the compressed head in _thread_local
+        # and inject it here, keeping only the tail messages that are genuinely new
+        # since the last compression.
+        compressed_head = getattr(_thread_local, "compressed_head", None)
+        n_crewai_at_compression = getattr(_thread_local, "n_crewai_at_compression", 0)
+        if (
+            compressed_head is not None
+            and isinstance(kwargs.get("messages"), list)
+            and n_crewai_len > n_crewai_at_compression
+        ):
+            current = kwargs["messages"]
+            new_tail = current[n_crewai_at_compression:]
+            kwargs["messages"] = compressed_head + new_tail
+            logger.debug(
+                "_record_completion: injected compressed head (%d msgs) + %d new tail msgs",
+                len(compressed_head), len(new_tail),
+            )
+
+        # Context window compression: if the messages list exceeds the per-model
+        # threshold, compress the full conversation history using the planner model
+        # before making the real call. Uses _original directly to avoid recursion.
+        context_windows = getattr(_thread_local, "context_windows", {})
+        messages = kwargs.get("messages")
+        model_for_cw = kwargs.get("model") or (args[0] if args else None)
+        if (
+            isinstance(messages, list)
+            and len(messages) > 1
+            and model_for_cw in context_windows
+        ):
+            import litellm as _lm
+            token_count = _lm.token_counter(model=model_for_cw, messages=messages)
+            cw_info = context_windows[model_for_cw]
+            per_model_threshold = cw_info.get("compression_threshold", settings.context_compression_threshold)
+            threshold_tokens = int(cw_info["context_window_tokens"] * per_model_threshold)
+            if token_count > threshold_tokens:
+                logger.info(
+                    "_record_completion: context %d tokens > threshold %d — compressing",
+                    token_count, threshold_tokens,
+                )
+                new_messages, summary = _compress_messages(messages, model_for_cw, _original)
+                if summary:
+                    _log_compression(token_count, threshold_tokens, messages, new_messages, model_for_cw)
+                    kwargs["messages"] = new_messages
+                    # Persist so the next call re-uses the compressed head instead of
+                    # seeing CrewAI's full uncompressed history (which would re-trigger).
+                    _thread_local.compressed_head = new_messages
+                    _thread_local.n_crewai_at_compression = n_crewai_len
 
         result = None
         exc = None
@@ -562,6 +762,11 @@ def wrap_litellm_completion() -> Generator[None, None, None]:
                         f"{_count} consecutive LLM calls without tool call "
                         f"(limit: {llm_cycle_limit})"
                     )
+
+    # Reset per-job compression state so a job running on a reused thread does not
+    # inherit a stale compressed head from the previous job on this thread.
+    _thread_local.compressed_head = None
+    _thread_local.n_crewai_at_compression = 0
 
     _litellm.completion = _record_completion
     try:

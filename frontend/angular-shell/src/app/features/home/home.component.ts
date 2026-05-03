@@ -45,6 +45,11 @@ const SESSION_STORAGE_KEY = 'lc_session_id';
             <button class="home__new-btn" [disabled]="creatingConversation()" (click)="onNewSession()">
               {{ creatingConversation() ? 'Creating…' : '+ New Session' }}
             </button>
+            <button class="home__restart-btn"
+              [disabled]="restartingSession() || !currentSessionId()"
+              (click)="onRestartSession()">
+              {{ restartingSession() ? 'Restarting…' : '↺ Restart Session' }}
+            </button>
           }
         </section>
         @if (progressVisible()) {
@@ -159,6 +164,19 @@ const SESSION_STORAGE_KEY = 'lc_session_id';
     }
     .home__new-btn:hover { background: #f0f6ff; }
     .home__new-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    .home__restart-btn {
+      margin-top: 0.5rem;
+      width: 100%;
+      padding: 0.5rem 1rem;
+      background: white;
+      border: 1px solid #797775;
+      color: #605e5c;
+      border-radius: 4px;
+      font-size: 0.875rem;
+      cursor: pointer;
+    }
+    .home__restart-btn:hover:not([disabled]) { background: #f3f2f1; }
+    .home__restart-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
     .home__history {
       background: white;
@@ -269,6 +287,7 @@ export class HomeComponent implements OnInit, AfterViewInit, OnDestroy {
   currentAssetIds = signal<string[]>([]);
   currentJobId = signal<string | null>(null);
   creatingConversation = signal<boolean>(false);
+  restartingSession = signal<boolean>(false);
   jobs = signal<Job[]>([]);
   outputsMap = signal<Map<string, Output[]>>(new Map());
   historyLoading = signal<boolean>(false);
@@ -375,6 +394,25 @@ export class HomeComponent implements OnInit, AfterViewInit, OnDestroy {
     void this.createNewConversation();
   }
 
+  async onRestartSession(): Promise<void> {
+    const sessionId = this.currentSessionId();
+    if (!sessionId || this.restartingSession()) return;
+    this.restartingSession.set(true);
+    try {
+      await firstValueFrom(this.api.restartSession(sessionId));
+      this.jobs.set([]);
+      this.outputsMap.set(new Map());
+      this.stopJobPolling();
+      this.progressSteps.set([]);
+      this.progressVisible.set(false);
+      this.jobDone.set(false);
+      void this.librechatIframe?.reset();
+      await this.createNewConversation(false);
+    } finally {
+      this.restartingSession.set(false);
+    }
+  }
+
   onNewSession(): void {
     this.currentSessionId.set(null);
     this.currentVideoIds.set([]);
@@ -467,7 +505,7 @@ export class HomeComponent implements OnInit, AfterViewInit, OnDestroy {
     });
   }
 
-  private async createNewConversation(): Promise<void> {
+  private async createNewConversation(resetUploads = true): Promise<void> {
     this.creatingConversation.set(true);
     this.currentJobId.set(null);
     this.progressSteps.set([]);
@@ -476,7 +514,9 @@ export class HomeComponent implements OnInit, AfterViewInit, OnDestroy {
     this.conversationService.createNewConversationSlot();
 
     try {
-      this.onNewSessionSubject.next();
+      if (resetUploads) {
+        this.onNewSessionSubject.next();
+      }
 
       const { job } = await firstValueFrom(
         this.api.createDraftJob(this.currentSessionId()),

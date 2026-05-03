@@ -250,6 +250,7 @@ const LOG_PALETTE = [
                                       ? progressMap.get(log.call_group_id) : undefined;
                             <tr [style.background-color]="groupColor(log.call_group_id, logs)"
                                 [class.log-row--error]="log.message_type === 'Error'"
+                                [class.log-row--compression]="log.log_type === 'context_compression'"
                                 [class.log-row--selected]="selectedLogId() === log.id"
                                 (click)="selectLog(log.id)">
                               <td class="col-time">{{ log.created_at | date:'HH:mm:ss.SSS' }}</td>
@@ -261,6 +262,9 @@ const LOG_PALETTE = [
                               </td>
                               <td class="col-msgtype">
                                 <span class="msg-badge msg-badge--{{ log.message_type.toLowerCase() }}">{{ log.message_type }}</span>
+                                @if (log.cached) {
+                                  <span class="cached-badge" title="Result served from cache">cached</span>
+                                }
                                 @if (tp) {
                                   @let pct = progressPct(tp);
                                   <div class="tool-progress">
@@ -494,6 +498,8 @@ const LOG_PALETTE = [
     }
     .logs-table tr:last-child td { border-bottom: none; }
     .log-row--error td { outline: 1px solid #f5c6c6; }
+    .log-row--compression td { background-color: rgba(234, 88, 12, 0.07) !important; }
+    .log-row--compression td:first-child { border-left: 3px solid #ea580c; }
     .log-row--selected td { background-color: rgba(0, 80, 160, 0.10) !important; }
     .log-row--selected td:first-child { border-left: 3px solid #0050a0; }
     .logs-table tr { cursor: pointer; }
@@ -534,6 +540,7 @@ const LOG_PALETTE = [
     .type-badge--agent_step { background: #fff3cd; color: #7a5800; }
     .type-badge--task_complete { background: #f0e8ff; color: #5a1a9a; }
     .type-badge--error { background: #fde8e8; color: #c62828; }
+    .type-badge--context_compression { background: #fff0e6; color: #c2410c; font-weight: 600; }
     .msg-badge {
       display: inline-block;
       font-size: 0.67rem;
@@ -546,6 +553,19 @@ const LOG_PALETTE = [
     .msg-badge--input  { background: #dbeafe; color: #1d4ed8; }
     .msg-badge--output { background: #dcfce7; color: #15803d; }
     .msg-badge--error  { background: #fde8e8; color: #c62828; }
+    .cached-badge {
+      display: inline-block;
+      margin-left: 4px;
+      padding: 1px 5px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      background: #7c3aed22;
+      color: #7c3aed;
+      border: 1px solid #7c3aed55;
+      vertical-align: middle;
+    }
     .data-preview {
       display: block;
       overflow: hidden;
@@ -738,7 +758,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     for (const [jobId, logs] of this.jobLogs()) {
       const counts = new Map<string, number>();
       for (const log of logs) {
-        if (log.log_type === 'llm_call' && log.model_id) {
+        if ((log.log_type === 'llm_call' || log.log_type === 'context_compression') && log.model_id) {
           counts.set(log.model_id, (counts.get(log.model_id) ?? 0) + 1);
         }
       }

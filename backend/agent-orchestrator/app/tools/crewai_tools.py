@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import queue as _queue_module
@@ -48,6 +49,27 @@ _JSON_SCHEMA_TYPE_MAP: dict[str, type] = {
 
 # Keys injected by CrewAI internals that must not be forwarded to MCP servers.
 _CREWAI_INTERNAL_KEYS = {"metadata", "security_context"}
+
+# Keys excluded from the cache key so the same tool+input matches across sessions/jobs.
+_CACHE_IGNORE_KEYS = {"job_id", "session_id", "frame_batch_size"}
+
+
+def _compute_cache_key(payload: dict[str, Any]) -> str:
+    """SHA-256 of the payload with job_id/session_id removed and keys sorted."""
+    normalized = {k: v for k, v in payload.items() if k not in _CACHE_IGNORE_KEYS}
+    serialized = json.dumps(normalized, sort_keys=True, ensure_ascii=True, default=str)
+    return hashlib.sha256(serialized.encode()).hexdigest()
+
+
+def _extract_urls(obj: Any) -> list[str]:
+    """Recursively collect all HTTP URL strings from a nested dict/list."""
+    if isinstance(obj, str) and obj.startswith(("http://", "https://")):
+        return [obj]
+    if isinstance(obj, dict):
+        return [u for v in obj.values() for u in _extract_urls(v)]
+    if isinstance(obj, list):
+        return [u for item in obj for u in _extract_urls(item)]
+    return []
 
 
 def _make_args_schema(input_schema: dict[str, Any]) -> type[BaseModel]:
@@ -133,6 +155,48 @@ class McpTool(BaseTool):
                 "error_text": None,
             })
 
+            # --- Check tool call cache (user-scoped, excludes job_id/session_id from key) ---
+            user_id = getattr(_thread_local, "user_id", None)
+            cache_key: str | None = None
+            if user_id and _loop is not None and _loop.is_running():
+                cache_key = _compute_cache_key(payload)
+                try:
+                    from app.db import get_tool_cache
+                    cached = asyncio.run_coroutine_threadsafe(
+                        get_tool_cache(user_id, self._tool_name, cache_key), _loop
+                    ).result(timeout=5)
+                except Exception:
+                    logger.warning("cache lookup failed for %s — proceeding without cache", self._tool_name)
+                    cached = None
+                if cached is not None:
+                    logger.info("MCP tool cache HIT: %s (user=%s)", self._tool_name, user_id)
+                    try:
+                        output_message = json.dumps(cached, ensure_ascii=False)
+                    except Exception:
+                        output_message = str(cached)
+                    seq_output = next(counter) if counter is not None else 0
+                    self._write_log_row({
+                        "job_id": job_id,
+                        "session_id": session_id,
+                        "service_name": service,
+                        "log_type": "tool_call",
+                        "model_id": None,
+                        "tool_name": self._tool_name,
+                        "message": output_message,
+                        "message_type": "Output",
+                        "call_group_id": call_group_id,
+                        "sequence_num": seq_output,
+                        "error_text": None,
+                        "cached": True,
+                    })
+                    if session_id and _loop is not None and _loop.is_running():
+                        from app.db import unhide_session_asset_by_url
+                        for _url in _extract_urls(cached):
+                            asyncio.run_coroutine_threadsafe(
+                                unhide_session_asset_by_url(session_id, _url), _loop
+                            )
+                    return json.dumps(cached)
+
             # --- Insert initial tool_progress row ---
             if _loop is not None and _loop.is_running() and job_id:
                 from app.db import insert_tool_progress
@@ -158,6 +222,16 @@ class McpTool(BaseTool):
                 invoke_mcp_tool(self._server_url, self._tool_name, payload, on_progress_cb)
             )
             logger.info("MCP tool result: %s -> %s", self._tool_name, str(result)[:500])
+
+            # --- Store result in cache (fire-and-forget) ---
+            if user_id and cache_key and _loop is not None and _loop.is_running() and isinstance(result, dict):
+                try:
+                    from app.db import set_tool_cache
+                    asyncio.run_coroutine_threadsafe(
+                        set_tool_cache(user_id, self._tool_name, cache_key, payload, result), _loop
+                    )
+                except Exception:
+                    logger.warning("cache store failed for %s — ignoring", self._tool_name)
 
             # --- Mark tool_progress completed ---
             if _loop is not None and _loop.is_running() and job_id:

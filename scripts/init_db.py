@@ -18,6 +18,7 @@ DATABASE_URL = os.environ.get(
 )
 
 DROP_TABLES_SQL = """
+DROP TABLE IF EXISTS tool_call_cache CASCADE;
 DROP TABLE IF EXISTS tool_progress CASCADE;
 DROP TABLE IF EXISTS job_logs CASCADE;
 DROP TABLE IF EXISTS session_assets CASCADE;
@@ -155,6 +156,7 @@ CREATE TABLE IF NOT EXISTS session_assets (
     description TEXT,           -- human-readable description of asset content
     summary_json JSONB,         -- structured summary returned by the tool that produced this asset
     source_job_id UUID REFERENCES jobs(id) ON DELETE SET NULL,  -- job that created this asset
+    session_hidden BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -202,6 +204,20 @@ CREATE TABLE IF NOT EXISTS tool_progress (
 CREATE INDEX IF NOT EXISTS tool_progress_job_id_idx     ON tool_progress(job_id);
 CREATE INDEX IF NOT EXISTS tool_progress_updated_at_idx ON tool_progress(job_id, updated_at);
 
+-- Per-user MCP tool call cache (keyed by user_id + tool_name + input_hash, excluding job_id/session_id)
+CREATE TABLE IF NOT EXISTS tool_call_cache (
+    id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id     UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    tool_name   TEXT        NOT NULL,
+    input_hash  TEXT        NOT NULL,
+    input_json  JSONB       NOT NULL,
+    output_json JSONB       NOT NULL,
+    created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS tool_call_cache_lookup_idx ON tool_call_cache (user_id, tool_name, input_hash);
+CREATE INDEX IF NOT EXISTS tool_call_cache_user_id_idx ON tool_call_cache (user_id);
+
 -- Platform configuration settings (model names, etc.)
 CREATE TABLE IF NOT EXISTS app_settings (
     key         TEXT PRIMARY KEY,
@@ -222,19 +238,20 @@ CREATE TABLE IF NOT EXISTS model_context_windows (
     model_name            TEXT PRIMARY KEY,
     context_window_tokens INTEGER NOT NULL,
     safety_margin         FLOAT NOT NULL DEFAULT 0.5,
+    compression_threshold FLOAT NOT NULL DEFAULT 0.7,
     description           TEXT,
     updated_at            TIMESTAMPTZ DEFAULT NOW()
 );
 
-INSERT INTO model_context_windows (model_name, context_window_tokens, safety_margin, description) VALUES
-    ('anthropic/claude-opus-4-6',                 200000, 0.5, 'Claude Opus 4.6 (direct Anthropic API)'),
-    ('anthropic/claude-sonnet-4-6',               200000, 0.5, 'Claude Sonnet 4.6 (direct Anthropic API)'),
-    ('anthropic/claude-haiku-4-5-20251001',       200000, 0.5, 'Claude Haiku 4.5 (direct Anthropic API)'),
-    ('openai/gpt-4o',                             128000, 0.5, 'GPT-4o (OpenAI API)'),
-    ('openai/gpt-4o-mini',                        128000, 0.5, 'GPT-4o Mini (OpenAI API)'),
-    ('bedrock/us.amazon.nova-2-lite-v1:0',        300000, 0.7, 'Amazon Nova 2 Lite (Bedrock)'),
-    ('bedrock/us.anthropic.claude-opus-4-5-v1:0', 200000, 0.5, 'Claude Opus 4.5 (Bedrock)'),
-    ('bedrock/openai.gpt-oss-120b-1:0',           128000, 0.5, 'GPT OSS 120B (Bedrock)')
+INSERT INTO model_context_windows (model_name, context_window_tokens, safety_margin, compression_threshold, description) VALUES
+    ('anthropic/claude-opus-4-6',                 200000, 0.5, 0.7, 'Claude Opus 4.6 (direct Anthropic API)'),
+    ('anthropic/claude-sonnet-4-6',               200000, 0.5, 0.7, 'Claude Sonnet 4.6 (direct Anthropic API)'),
+    ('anthropic/claude-haiku-4-5-20251001',       200000, 0.5, 0.7, 'Claude Haiku 4.5 (direct Anthropic API)'),
+    ('openai/gpt-4o',                             128000, 0.5, 0.7, 'GPT-4o (OpenAI API)'),
+    ('openai/gpt-4o-mini',                        128000, 0.5, 0.7, 'GPT-4o Mini (OpenAI API)'),
+    ('bedrock/us.amazon.nova-2-lite-v1:0',        300000, 0.7, 0.08, 'Amazon Nova 2 Lite (Bedrock)'),
+    ('bedrock/us.anthropic.claude-opus-4-5-v1:0', 200000, 0.5, 0.7, 'Claude Opus 4.5 (Bedrock)'),
+    ('bedrock/openai.gpt-oss-120b-1:0',           128000, 0.5, 0.7, 'GPT OSS 120B (Bedrock)')
 ON CONFLICT (model_name) DO NOTHING;
 
 INSERT INTO app_settings (key, value, description) VALUES
@@ -255,27 +272,45 @@ MIGRATE_SQL = """
 -- Schema migrations: add new tables and columns if they don't exist yet.
 -- Safe to run on both fresh and existing databases.
 
--- model_context_windows: per-model context window sizes for vision batching.
+-- tool_call_cache: per-user MCP tool result cache
+CREATE TABLE IF NOT EXISTS tool_call_cache (
+    id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id     UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    tool_name   TEXT        NOT NULL,
+    input_hash  TEXT        NOT NULL,
+    input_json  JSONB       NOT NULL,
+    output_json JSONB       NOT NULL,
+    created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS tool_call_cache_lookup_idx ON tool_call_cache (user_id, tool_name, input_hash);
+CREATE INDEX IF NOT EXISTS tool_call_cache_user_id_idx ON tool_call_cache (user_id);
+
+-- model_context_windows: per-model context window sizes for vision batching and context compression.
 CREATE TABLE IF NOT EXISTS model_context_windows (
     model_name            TEXT PRIMARY KEY,
     context_window_tokens INTEGER NOT NULL,
     safety_margin         FLOAT NOT NULL DEFAULT 0.5,
+    compression_threshold FLOAT NOT NULL DEFAULT 0.7,
     description           TEXT,
     updated_at            TIMESTAMPTZ DEFAULT NOW()
 );
 
-INSERT INTO model_context_windows (model_name, context_window_tokens, safety_margin, description) VALUES
-    ('anthropic/claude-opus-4-6',                 200000, 0.5, 'Claude Opus 4.6 (direct Anthropic API)'),
-    ('anthropic/claude-sonnet-4-6',               200000, 0.5, 'Claude Sonnet 4.6 (direct Anthropic API)'),
-    ('anthropic/claude-haiku-4-5-20251001',       200000, 0.5, 'Claude Haiku 4.5 (direct Anthropic API)'),
-    ('openai/gpt-4o',                             128000, 0.5, 'GPT-4o (OpenAI API)'),
-    ('openai/gpt-4o-mini',                        128000, 0.5, 'GPT-4o Mini (OpenAI API)'),
-    ('bedrock/us.amazon.nova-2-lite-v1:0',        300000, 0.7, 'Amazon Nova 2 Lite (Bedrock)'),
-    ('bedrock/us.anthropic.claude-opus-4-5-v1:0', 200000, 0.5, 'Claude Opus 4.5 (Bedrock)'),
-    ('bedrock/openai.gpt-oss-120b-1:0',           128000, 0.5, 'GPT OSS 120B (Bedrock)')
+ALTER TABLE model_context_windows
+    ADD COLUMN IF NOT EXISTS compression_threshold FLOAT NOT NULL DEFAULT 0.7;
+
+INSERT INTO model_context_windows (model_name, context_window_tokens, safety_margin, compression_threshold, description) VALUES
+    ('anthropic/claude-opus-4-6',                 200000, 0.5, 0.7, 'Claude Opus 4.6 (direct Anthropic API)'),
+    ('anthropic/claude-sonnet-4-6',               200000, 0.5, 0.7, 'Claude Sonnet 4.6 (direct Anthropic API)'),
+    ('anthropic/claude-haiku-4-5-20251001',       200000, 0.5, 0.7, 'Claude Haiku 4.5 (direct Anthropic API)'),
+    ('openai/gpt-4o',                             128000, 0.5, 0.7, 'GPT-4o (OpenAI API)'),
+    ('openai/gpt-4o-mini',                        128000, 0.5, 0.7, 'GPT-4o Mini (OpenAI API)'),
+    ('bedrock/us.amazon.nova-2-lite-v1:0',        300000, 0.7, 0.08, 'Amazon Nova 2 Lite (Bedrock)'),
+    ('bedrock/us.anthropic.claude-opus-4-5-v1:0', 200000, 0.5, 0.7, 'Claude Opus 4.5 (Bedrock)'),
+    ('bedrock/openai.gpt-oss-120b-1:0',           128000, 0.5, 0.7, 'GPT OSS 120B (Bedrock)')
 ON CONFLICT (model_name) DO UPDATE SET
     context_window_tokens = EXCLUDED.context_window_tokens,
     safety_margin         = EXCLUDED.safety_margin,
+    compression_threshold = EXCLUDED.compression_threshold,
     description           = EXCLUDED.description,
     updated_at            = NOW();
 
@@ -291,6 +326,13 @@ CREATE INDEX IF NOT EXISTS session_assets_source_job_id_idx ON session_assets(so
 
 ALTER TABLE sessions
     ADD COLUMN IF NOT EXISTS is_test BOOLEAN NOT NULL DEFAULT FALSE;
+
+ALTER TABLE job_logs
+    ADD COLUMN IF NOT EXISTS cached BOOLEAN NOT NULL DEFAULT FALSE;
+
+ALTER TABLE session_assets
+    ADD COLUMN IF NOT EXISTS session_hidden BOOLEAN NOT NULL DEFAULT FALSE;
+CREATE INDEX IF NOT EXISTS session_assets_hidden_idx ON session_assets(session_id, session_hidden);
 """
 
 

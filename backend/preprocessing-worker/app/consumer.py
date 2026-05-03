@@ -8,7 +8,7 @@ from azure.servicebus import ServiceBusMessage
 from app.config import settings
 from app.processor import extract_keyframes
 from app.blob import download_video, upload_keyframe
-from app.db import store_keyframe_index, update_video_status, create_session_asset, get_app_setting
+from app.db import store_keyframe_index, update_video_status, create_session_asset, get_app_setting, get_stuck_videos
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +89,34 @@ async def process_video_message(message_body: dict) -> None:
             raise
 
 
+async def recover_stuck_videos() -> None:
+    """At startup, process any videos stuck in 'uploaded' state.
+
+    Covers the case where the container restarted before the VIDEO_UPLOADED
+    Service Bus message was consumed (and thus lost). Only touches videos
+    older than 60 s so newly-uploaded videos still in flight are not raced.
+    Already-indexed videos are never returned by get_stuck_videos().
+    """
+    try:
+        stuck = await get_stuck_videos(min_age_seconds=60)
+    except Exception:
+        logger.warning("recover_stuck_videos: DB query failed — skipping recovery", exc_info=True)
+        return
+    if not stuck:
+        return
+    logger.info("recover_stuck_videos: found %d stuck video(s) — reprocessing", len(stuck))
+    for video in stuck:
+        try:
+            await process_video_message({
+                "videoId": str(video["id"]),
+                "userId": str(video["user_id"]) if video["user_id"] else "",
+                "blobUrl": video["original_url"],
+                "sessionId": str(video["session_id"]) if video["session_id"] else None,
+            })
+        except Exception:
+            logger.exception("recover_stuck_videos: failed for video %s — continuing", video["id"])
+
+
 _BACKOFF_BASE = 2
 _BACKOFF_MAX = 60
 
@@ -109,6 +137,7 @@ MAX_LOCK_RENEWAL_SECONDS = 60 * 60  # 1 hour (set based on worst-case processing
 
 async def run_consumer() -> None:
     logger.info("Starting Service Bus consumer for queue: video-uploaded")
+    await recover_stuck_videos()
     attempt = 0
 
     while True:

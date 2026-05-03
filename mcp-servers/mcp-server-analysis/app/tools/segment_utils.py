@@ -52,4 +52,4 @@ def aggregate_detections_to_segments(
         "max_confidence": round(seg_max_conf, 3),
     })
 
-    return segments
+    return [s for s in segments if s["end_seconds"] > s["start_seconds"]]

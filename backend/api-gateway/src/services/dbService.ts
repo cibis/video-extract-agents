@@ -206,6 +206,18 @@ CREATE TABLE IF NOT EXISTS model_context_windows (
     updated_at            TIMESTAMPTZ DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS tool_call_cache (
+    id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id     UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    tool_name   TEXT        NOT NULL,
+    input_hash  TEXT        NOT NULL,
+    input_json  JSONB       NOT NULL,
+    output_json JSONB       NOT NULL,
+    created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS tool_call_cache_lookup_idx ON tool_call_cache (user_id, tool_name, input_hash);
+CREATE INDEX IF NOT EXISTS tool_call_cache_user_id_idx ON tool_call_cache (user_id);
+
 -- Seed dev user for LOCAL_DEV_SKIP_AUTH mode
 INSERT INTO users (id, email) VALUES
     ('00000000-0000-0000-0000-000000000001', 'dev@local')
@@ -324,6 +336,7 @@ export interface JobLog {
   call_group_id: string;
   sequence_num: number;
   error_text: string | null;
+  cached: boolean;
   created_at: Date;
 }
 
@@ -732,7 +745,7 @@ export async function createSessionAssetRecord(params: {
 export async function getSessionAssets(sessionId: string): Promise<SessionAsset[]> {
   const pool = getPool();
   const result = await pool.query<SessionAsset>(
-    'SELECT * FROM session_assets WHERE session_id = $1 ORDER BY created_at',
+    'SELECT * FROM session_assets WHERE session_id = $1 AND session_hidden = false ORDER BY created_at',
     [sessionId]
   );
   return result.rows;
@@ -799,7 +812,7 @@ export async function getJobLogs(jobId: string): Promise<JobLog[]> {
   const result = await pool.query<JobLog>(
     `SELECT id, job_id, session_id, service_name, log_type, model_id,
             tool_name, agent_role, task_name, message, message_type,
-            call_group_id, sequence_num, error_text, created_at
+            call_group_id, sequence_num, error_text, cached, created_at
      FROM job_logs
      WHERE job_id = $1
      ORDER BY sequence_num ASC`,
@@ -813,7 +826,7 @@ export async function getJobLogsSince(jobId: string, afterSeq: number): Promise<
   const result = await pool.query<JobLog>(
     `SELECT id, job_id, session_id, service_name, log_type, model_id,
             tool_name, agent_role, task_name, message, message_type,
-            call_group_id, sequence_num, error_text, created_at
+            call_group_id, sequence_num, error_text, cached, created_at
      FROM job_logs
      WHERE job_id = $1 AND sequence_num > $2
      ORDER BY sequence_num ASC`,
@@ -842,4 +855,45 @@ export async function getToolProgressSince(
     [jobId, afterDate],
   );
   return result.rows;
+}
+
+// ─── Session history ──────────────────────────────────────────────────────────
+
+/**
+ * Delete all conversation history for a session (jobs, steps, logs, outputs,
+ * tool progress, and job-output session_assets) while keeping uploaded files,
+ * keyframes, assets, and the tool-call cache.
+ */
+export async function clearSessionHistory(sessionId: string): Promise<void> {
+  const pool = getPool();
+  // Hide analysis assets so the planner starts fresh; rows remain for cache-hit re-exposure
+  await pool.query(
+    `UPDATE session_assets
+        SET session_hidden = true
+      WHERE session_id = $1
+        AND asset_type = 'job_analysis_result'`,
+    [sessionId],
+  );
+  // Remove output/segment session_assets before deleting jobs so the
+  // source_job_id FK doesn't silently go NULL on remaining rows.
+  await pool.query(
+    `DELETE FROM session_assets
+      WHERE session_id = $1
+        AND asset_type IN ('job_output_video', 'job_output_file', 'segment')`,
+    [sessionId],
+  );
+  // Cascades: job_steps, job_logs, outputs, tool_progress
+  await pool.query('DELETE FROM jobs WHERE session_id = $1', [sessionId]);
+}
+
+// ─── Tool call cache ──────────────────────────────────────────────────────────
+
+/** Delete all cached tool call results for a user. Returns the row count deleted. */
+export async function clearToolCache(userId: string): Promise<number> {
+  const pool = getPool();
+  const result = await pool.query(
+    'DELETE FROM tool_call_cache WHERE user_id = $1',
+    [userId],
+  );
+  return result.rowCount ?? 0;
 }

@@ -20,6 +20,7 @@ from app.db import (
     record_job_log,
     record_job_step,
     get_app_setting,
+    get_model_context_window,
 )
 from app.generated_asset_store import write_generated_asset
 from app.tools.catalogue import fetch_tool_catalogue, filter_catalogue_for_frontend, format_catalogue_for_planner, reset_analysis_rate_limiter
@@ -99,6 +100,8 @@ def _kickoff_with_context(
     tool_max_retry_limit: int = 5,
     planner_model: str | None = None,
     planner_rpm_limit: int | None = None,
+    user_id: str | None = None,
+    context_windows: dict | None = None,
 ):
     """Run crew.kickoff() inside the executor thread with job context set for callbacks.
 
@@ -120,7 +123,7 @@ def _kickoff_with_context(
     planner_rpm_limit: RPM cap enforced for LLM calls made in recovery mode (planner model).
     None means unlimited.
     """
-    set_job_context(job_id, session_id)
+    set_job_context(job_id, session_id, user_id)
     set_loop(loop)
     _thread_local.seq_counter = new_counter()
     _thread_local.llm_cycle_count = 0
@@ -129,6 +132,7 @@ def _kickoff_with_context(
     _thread_local.recovery_model_active = False
     _thread_local.planner_rpm_limit = planner_rpm_limit
     _thread_local.recovery_call_times = None  # initialised lazily as a deque on first use
+    _thread_local.context_windows = context_windows or {}
     try:
         with wrap_litellm_completion():
             with guard_tool_usage_errors(limit=tool_max_retry_limit):
@@ -143,6 +147,7 @@ def _kickoff_with_context(
         _thread_local.recovery_model_active = False
         _thread_local.planner_rpm_limit = None
         _thread_local.recovery_call_times = None
+        _thread_local.context_windows = {}
 
 
 def _step_name_from_output(step_output, agent_role: str) -> str:
@@ -337,6 +342,18 @@ async def run_crew(
             planner_rpm_limit = agent_rpm_limit
     else:
         planner_rpm_limit = agent_rpm_limit
+
+    # Fetch context window config for both models (used by context compression in litellm_callbacks).
+    # Done after model resolution so the correct model strings are used.
+    _cw_results = await asyncio.gather(
+        get_model_context_window(agent_model),
+        get_model_context_window(planner_model),
+        return_exceptions=True,
+    )
+    context_windows: dict[str, dict] = {}
+    for _cw_model, _cw in zip([agent_model, planner_model], _cw_results):
+        if isinstance(_cw, dict):
+            context_windows[_cw_model] = _cw
 
     # Merge any explicitly-passed asset URLs (used when no session_id is available)
     if extra_asset_urls:
@@ -549,7 +566,7 @@ async def run_crew(
     try:
         result = await loop.run_in_executor(
             None,
-            lambda: _kickoff_with_context(crew, kickoff_inputs, job_id, session_id, loop, tool_max_retry_limit, planner_model, planner_rpm_limit),
+            lambda: _kickoff_with_context(crew, kickoff_inputs, job_id, session_id, loop, tool_max_retry_limit, planner_model, planner_rpm_limit, user_id, context_windows),
         )
     finally:
         set_mcp_job_log_queue(None)
@@ -674,26 +691,26 @@ def _describe_analysis_asset(tool_name: str, filename: str, summary: dict | None
         return f"Merged segments list — {n} time intervals. Pass as segments_asset to extract_clips_bulk."
     if tool_name == "detect_objects":
         classes = (summary or {}).get("classes_detected", [])
-        n_segs = len((summary or {}).get("segments", []))
+        n_segs = (summary or {}).get("segments_count", 0)
         n_det = (summary or {}).get("total_detections", 0)
         cls_str = ", ".join(classes) if classes else "unknown"
         return f"YOLO object detection for [{cls_str}] — {n_segs} segments, {n_det} detections"
     if tool_name == "detect_objects_vision":
-        n_segs = len((summary or {}).get("segments", []))
+        n_segs = (summary or {}).get("segments_count", 0)
         return f"Claude vision object detection — {n_segs} segments detected"
     if tool_name == "detect_motion":
-        n_segs = len((summary or {}).get("segments", []))
+        n_segs = (summary or {}).get("segments_count", 0)
         return f"Motion detection (optical flow) — {n_segs} high-motion segments"
     if tool_name == "detect_motion_sports":
-        n_segs = len((summary or {}).get("segments", []))
+        n_segs = (summary or {}).get("segments_count", 0)
         return f"Sports motion detection — {n_segs} events detected"
     if tool_name == "analyze_scene":
         n_frames = (summary or {}).get("frames_analyzed", 0)
         return f"Scene analysis (Claude vision) — {n_frames} frames described"
     if tool_name == "estimate_height_above_surface":
-        n_events = len((summary or {}).get("segments", []))
+        n_segs = (summary or {}).get("segments_count", 0)
         peak = (summary or {}).get("peak_height_m", 0.0)
-        return f"Height above surface (Depth Anything V2) — {n_events} airborne events, peak {peak:.2f} m"
+        return f"Height above surface (Depth Anything V2) — {n_segs} airborne events, peak {peak:.2f} m"
     if tool_name == "transcribe_audio":
         return "Audio transcription (Whisper)"
     if tool_name == "extract_frames":

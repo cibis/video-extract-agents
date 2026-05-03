@@ -449,14 +449,9 @@ resource "azurerm_container_app" "mcp_server_processing" {
       }
     }
 
-    custom_scale_rule {
-      name             = "servicebus-scale"
-      custom_rule_type = "azure-servicebus"
-      metadata = {
-        namespace    = var.service_bus_namespace
-        queueName    = "job-queued"
-        messageCount = "5"
-      }
+    http_scale_rule {
+      name                = "http-scaling"
+      concurrent_requests = "20"
     }
   }
 

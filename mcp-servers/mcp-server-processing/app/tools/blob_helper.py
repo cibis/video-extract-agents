@@ -77,7 +77,5 @@ def make_blob_path(
     job_id: str | None = None,
     session_id: str | None = None,
 ) -> str:
-    if job_id:
-        scope = session_id or "unscoped"
-        return f"processed/{scope}/{job_id}/{prefix}/{name}.{ext}"
-    return f"processed/{prefix}/{name}.{ext}"
+    scope = session_id or job_id or "unscoped"
+    return f"processed/{scope}/{prefix}/{name}.{ext}"

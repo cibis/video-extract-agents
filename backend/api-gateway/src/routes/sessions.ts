@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createSession, getSessionAssets } from '../services/dbService';
+import { createSession, getSessionAssets, clearSessionHistory } from '../services/dbService';
 import { generateSignedDownloadUrl } from '../services/blobService';
 
 export const sessionsRouter = Router();
@@ -23,6 +23,16 @@ sessionsRouter.get('/:id/assets', async (req, res, next) => {
       signed_url: await generateSignedDownloadUrl(asset.blob_url),
     })));
     res.json({ assets: withSignedUrls });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** POST /v1/sessions/:id/restart — wipe conversation history, keep uploads */
+sessionsRouter.post('/:id/restart', async (req, res, next) => {
+  try {
+    await clearSessionHistory(req.params.id);
+    res.json({ ok: true });
   } catch (err) {
     next(err);
   }

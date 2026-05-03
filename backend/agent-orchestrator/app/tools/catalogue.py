@@ -75,18 +75,86 @@ def filter_catalogue_for_frontend(catalogue: list[dict[str, Any]]) -> list[dict[
     return [t for t in catalogue if t.get("name") not in EXTERNAL_AGENT_ONLY_TOOLS]
 
 
+_BOILERPLATE_INPUTS = {"job_id", "session_id"}
+
+
+def _format_input_summary(input_schema: dict) -> str:
+    """Compact required/optional input listing, excluding boilerplate job_id/session_id."""
+    props = input_schema.get("properties", {})
+    required = set(input_schema.get("required", []))
+    req_parts: list[str] = []
+    opt_parts: list[str] = []
+    for name, spec in props.items():
+        if name in _BOILERPLATE_INPUTS:
+            continue
+        ftype = spec.get("type", "any")
+        if name in required:
+            req_parts.append(f"{name} ({ftype})")
+        else:
+            default = spec.get("default")
+            desc = spec.get("description", "")
+            first_sentence = desc.split(".")[0].strip() if desc else ""
+            part = f"{name} ({ftype}" + (f", default={default}" if default is not None else "") + ")"
+            if first_sentence and len(first_sentence) <= 80:
+                part += f": {first_sentence}"
+            opt_parts.append(part)
+    lines: list[str] = []
+    if req_parts:
+        lines.append(f"    inputs-required: {', '.join(req_parts)}")
+    if opt_parts:
+        lines.append(f"    inputs-optional: {'; '.join(opt_parts)}")
+    return "\n".join(lines)
+
+
+def _format_output_summary(output_schema: dict) -> str:
+    """Blob content description and summary field names from the output schema."""
+    props = output_schema.get("properties", {})
+    lines: list[str] = []
+    if "result_asset" in props:
+        desc = props["result_asset"].get("description", "")
+        if desc:
+            lines.append(f"    output.result_asset: {desc}")
+        summary_props = props.get("summary", {}).get("properties", {})
+        if summary_props:
+            fields = ", ".join(
+                f"{k} ({v.get('type', 'any')})"
+                for k, v in summary_props.items()
+                if not str(k).startswith("#")
+            )
+            if fields:
+                lines.append(f"    output.summary: {fields}")
+    else:
+        for name, spec in props.items():
+            if name == "summary":
+                continue
+            ftype = spec.get("type", "any")
+            desc = spec.get("description", "")
+            part = f"    output.{name} ({ftype})"
+            if desc:
+                part += f": {desc}"
+            lines.append(part)
+    return "\n".join(lines)
+
+
 def format_catalogue_for_planner(catalogue: list[dict[str, Any]]) -> str:
-    """Return a compact human-readable tool listing for inclusion in the planner prompt."""
+    """Return a human-readable tool listing with input/output schemas for the planner prompt."""
     lines: list[str] = ["Available tools:"]
     for tool in catalogue:
         tags = ", ".join(tool.get("capability_tags") or [])
         cost_tier = tool.get("cost_tier", "free")
         cost_note = tool.get("cost_note", "")
-        cost_str = f"cost_tier={cost_tier}"
-        if cost_note:
-            cost_str += f" ({cost_note})"
-        lines.append(
+        cost_str = f"cost_tier={cost_tier}" + (f" ({cost_note})" if cost_note else "")
+        entry = (
             f"  - {tool['name']} [{tool.get('server', '?')}]: {tool['description']}\n"
             f"    tags=[{tags}] specialization={tool.get('specialization', 'general')} {cost_str}"
         )
+        if tool.get("input_schema"):
+            input_lines = _format_input_summary(tool["input_schema"])
+            if input_lines:
+                entry += "\n" + input_lines
+        if tool.get("output_schema"):
+            output_lines = _format_output_summary(tool["output_schema"])
+            if output_lines:
+                entry += "\n" + output_lines
+        lines.append(entry)
     return "\n".join(lines)

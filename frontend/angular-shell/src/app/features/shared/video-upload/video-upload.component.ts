@@ -13,7 +13,6 @@ import {
   OnInit,
   OnDestroy,
 } from '@angular/core';
-import { NgClass } from '@angular/common';
 import { ApiService, SessionAsset } from '../../../core/services/api.service';
 import { UploadService } from '../../../core/services/upload.service';
 import { Observable, Subscription } from 'rxjs';
@@ -35,7 +34,7 @@ interface FileStatus {
 @Component({
   selector: 'app-video-upload',
   standalone: true,
-  imports: [NgClass],
+  imports: [],
   template: `
     <div class="upload"
       [class.upload--dragging]="dragging()"

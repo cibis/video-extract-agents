@@ -44,6 +44,7 @@ async def detect_motion(
     segments = [
         {"start_seconds": seg["start"], "end_seconds": seg["end"], "video_url": video_url}
         for seg in high_motion
+        if seg["end"] > seg["start"]
     ]
 
     for rec in frame_records:
@@ -62,7 +63,6 @@ async def detect_motion(
     full_result = {
         "video_url": video_url,
         "motion_score": round(motion_score, 3),
-        "high_motion_segments": high_motion,
         "segments": segments,
         "frames": frame_records,
     }
@@ -78,9 +78,8 @@ async def detect_motion(
 
     total_duration = sum(s["end_seconds"] - s["start_seconds"] for s in segments)
     summary = {
-        "segments": segments,
         "motion_score": round(motion_score, 3),
-        "high_motion_segments_count": len(segments),
+        "segments_count": len(segments),
         "total_motion_duration_seconds": round(total_duration, 2),
     }
 
