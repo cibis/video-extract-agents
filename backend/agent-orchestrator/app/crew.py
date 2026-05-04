@@ -492,7 +492,8 @@ async def run_crew(
     # Capture the running event loop so callbacks can schedule async DB writes from threads
     loop = asyncio.get_running_loop()
 
-    planner = make_planner_agent(model=planner_model, rpm_limit=planner_rpm_limit)
+    _planner_max_tokens: int | None = context_windows.get(planner_model, {}).get("max_output_tokens")
+    planner = make_planner_agent(model=planner_model, rpm_limit=planner_rpm_limit, max_tokens=_planner_max_tokens)
     analyst = make_analysis_agent(model=agent_model, tools=analysis_tools, rpm_limit=agent_rpm_limit)
     processor = make_processing_agent(model=agent_model, tools=processing_tools, rpm_limit=agent_rpm_limit)
 

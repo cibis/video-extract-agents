@@ -240,6 +240,7 @@ CREATE TABLE IF NOT EXISTS model_context_windows (
     safety_margin         FLOAT NOT NULL DEFAULT 0.5,
     compression_threshold FLOAT NOT NULL DEFAULT 0.7,
     max_calls_per_job     INTEGER NOT NULL DEFAULT 200,
+    max_output_tokens     INTEGER,
     description           TEXT,
     updated_at            TIMESTAMPTZ DEFAULT NOW()
 );
@@ -294,6 +295,7 @@ CREATE TABLE IF NOT EXISTS model_context_windows (
     safety_margin         FLOAT NOT NULL DEFAULT 0.5,
     compression_threshold FLOAT NOT NULL DEFAULT 0.7,
     max_calls_per_job     INTEGER NOT NULL DEFAULT 200,
+    max_output_tokens     INTEGER,
     description           TEXT,
     updated_at            TIMESTAMPTZ DEFAULT NOW()
 );
@@ -304,20 +306,24 @@ ALTER TABLE model_context_windows
 ALTER TABLE model_context_windows
     ADD COLUMN IF NOT EXISTS max_calls_per_job INTEGER NOT NULL DEFAULT 200;
 
-INSERT INTO model_context_windows (model_name, context_window_tokens, safety_margin, compression_threshold, max_calls_per_job, description) VALUES
-    ('anthropic/claude-opus-4-6',                 200000, 0.5, 0.7,  15, 'Claude Opus 4.6 (direct Anthropic API)'),
-    ('anthropic/claude-sonnet-4-6',               200000, 0.5, 0.7,  15, 'Claude Sonnet 4.6 (direct Anthropic API)'),
-    ('anthropic/claude-haiku-4-5-20251001',       200000, 0.5, 0.7,  20, 'Claude Haiku 4.5 (direct Anthropic API)'),
-    ('openai/gpt-4o',                             128000, 0.5, 0.7,  15, 'GPT-4o (OpenAI API)'),
-    ('openai/gpt-4o-mini',                        128000, 0.5, 0.7,  15, 'GPT-4o Mini (OpenAI API)'),
-    ('bedrock/us.amazon.nova-2-lite-v1:0',        300000, 0.7, 0.1, 100, 'Amazon Nova 2 Lite (Bedrock)'),
-    ('bedrock/us.anthropic.claude-opus-4-5-v1:0', 200000, 0.5, 0.7,  15, 'Claude Opus 4.5 (Bedrock)'),
-    ('bedrock/openai.gpt-oss-120b-1:0',           128000, 0.5, 0.7, 100, 'GPT OSS 120B (Bedrock)')
+ALTER TABLE model_context_windows
+    ADD COLUMN IF NOT EXISTS max_output_tokens INTEGER;
+
+INSERT INTO model_context_windows (model_name, context_window_tokens, safety_margin, compression_threshold, max_calls_per_job, max_output_tokens, description) VALUES
+    ('anthropic/claude-opus-4-6',                 200000, 0.5, 0.7,  15, 32000, 'Claude Opus 4.6 (direct Anthropic API)'),
+    ('anthropic/claude-sonnet-4-6',               200000, 0.5, 0.7,  15, 64000, 'Claude Sonnet 4.6 (direct Anthropic API)'),
+    ('anthropic/claude-haiku-4-5-20251001',       200000, 0.5, 0.7,  20, 16000, 'Claude Haiku 4.5 (direct Anthropic API)'),
+    ('openai/gpt-4o',                             128000, 0.5, 0.7,  15, 16384, 'GPT-4o (OpenAI API)'),
+    ('openai/gpt-4o-mini',                        128000, 0.5, 0.7,  15, 16384, 'GPT-4o Mini (OpenAI API)'),
+    ('bedrock/us.amazon.nova-2-lite-v1:0',        300000, 0.7, 0.1, 100,  5120, 'Amazon Nova 2 Lite (Bedrock)'),
+    ('bedrock/us.anthropic.claude-opus-4-5-v1:0', 200000, 0.5, 0.7,  15, 32000, 'Claude Opus 4.5 (Bedrock)'),
+    ('bedrock/openai.gpt-oss-120b-1:0',           128000, 0.5, 0.7, 100, 16384, 'GPT OSS 120B (Bedrock)')
 ON CONFLICT (model_name) DO UPDATE SET
     context_window_tokens = EXCLUDED.context_window_tokens,
     safety_margin         = EXCLUDED.safety_margin,
     compression_threshold = EXCLUDED.compression_threshold,
     max_calls_per_job     = EXCLUDED.max_calls_per_job,
+    max_output_tokens     = EXCLUDED.max_output_tokens,
     description           = EXCLUDED.description,
     updated_at            = NOW();
 

@@ -613,8 +613,11 @@ def wrap_litellm_completion() -> Generator[None, None, None]:
 
         result = None
         exc = None
+        _raw_content: str | None = None
         try:
             result = _original(*args, **kwargs)
+            if result and getattr(result, "choices", None):
+                _raw_content = result.choices[0].message.content
             _strip_response_fences(result)
             return result
         except Exception as e:
@@ -627,6 +630,8 @@ def wrap_litellm_completion() -> Generator[None, None, None]:
                 kwargs_retry = {k: v for k, v in kwargs.items() if k != "stop"}
                 try:
                     result = _original(*args, **kwargs_retry)
+                    if result and getattr(result, "choices", None):
+                        _raw_content = result.choices[0].message.content
                     _strip_response_fences(result)
                     return result
                 except Exception as e2:
@@ -684,9 +689,7 @@ def wrap_litellm_completion() -> Generator[None, None, None]:
                     out_type = "Error"
                     out_error = str(exc)
                 else:
-                    out_message = ""
-                    if result is not None and getattr(result, "choices", None):
-                        out_message = result.choices[0].message.content or ""
+                    out_message = _raw_content or ""
                     out_type = "Output"
                     out_error = None
 

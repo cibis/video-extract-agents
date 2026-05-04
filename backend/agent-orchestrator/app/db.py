@@ -338,11 +338,11 @@ async def get_app_setting(key: str) -> str | None:
 
 
 async def get_model_context_window(model_name: str) -> dict | None:
-    """Return {context_window_tokens, safety_margin, compression_threshold} for model_name, or None."""
+    """Return {context_window_tokens, safety_margin, compression_threshold, max_output_tokens} for model_name, or None."""
     try:
         pool = await get_pool()
         row = await pool.fetchrow(
-            "SELECT context_window_tokens, safety_margin, compression_threshold, max_calls_per_job "
+            "SELECT context_window_tokens, safety_margin, compression_threshold, max_calls_per_job, max_output_tokens "
             "FROM model_context_windows WHERE model_name = $1",
             model_name,
         )
