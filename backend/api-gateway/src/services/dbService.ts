@@ -661,6 +661,15 @@ export async function createVideoRecord(params: {
   );
 }
 
+export async function getVideoStatus(videoId: string, userId: string): Promise<string | null> {
+  const pool = getPool();
+  const result = await pool.query<{ status: string }>(
+    'SELECT status FROM videos WHERE id = $1 AND user_id = $2',
+    [videoId, userId]
+  );
+  return result.rows[0]?.status ?? null;
+}
+
 // ─── Assets ───────────────────────────────────────────────────────────────────
 
 export async function createAssetRecord(params: {

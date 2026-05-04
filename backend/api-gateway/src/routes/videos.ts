@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { generateSasUploadUrl, getInternalBlobUrl } from '../services/blobService';
-import { createVideoRecord, ensureSessionExists, createSessionAssetRecord } from '../services/dbService';
+import { createVideoRecord, ensureSessionExists, createSessionAssetRecord, getVideoStatus } from '../services/dbService';
 import { publishVideoUploaded } from '../services/serviceBusService';
 import { registerPendingUpload } from '../services/pendingUploads';
 import { config } from '../config';
@@ -50,6 +50,17 @@ videosRouter.post('/', async (req, res, next) => {
     }
 
     res.status(201).json({ videoId, uploadUrl, blobPath });
+  } catch (err) {
+    next(err);
+  }
+});
+
+videosRouter.get('/:id/status', async (req, res, next) => {
+  try {
+    const userId = req.user!.id;
+    const status = await getVideoStatus(req.params.id, userId);
+    if (status === null) return res.status(404).json({ error: 'Not found' });
+    res.json({ status });
   } catch (err) {
     next(err);
   }

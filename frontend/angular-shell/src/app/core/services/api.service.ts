@@ -143,6 +143,10 @@ export class ApiService {
     );
   }
 
+  getVideoStatus(videoId: string): Observable<{ status: string }> {
+    return this.http.get<{ status: string }>(`${this.base}/v1/videos/${videoId}/status`);
+  }
+
   getJob(jobId: string): Observable<Job> {
     return this.http.get<Job>(`${this.base}/v1/jobs/${jobId}`);
   }

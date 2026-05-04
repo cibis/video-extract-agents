@@ -264,7 +264,8 @@ INSERT INTO app_settings (key, value, description) VALUES
     ('keyframe_scene_threshold',   '0.2',                                'FFmpeg scene-change detection threshold 0–1; lower = more sensitive (default: 0.2)'),
     ('planner_agent_model',        'anthropic/claude-haiku-4-5-20251001',          'LiteLLM model string for the Planner agent (overrides agent_model; empty = use agent_model)'),
     ('planner_agent_rpm_limit',    '2',                                  'Max LLM requests per minute for the Planner agent (overrides agent_rpm_limit; empty = use agent_rpm_limit)'),
-    ('tool_max_retry_limit',       '5',                                   'Max consecutive ToolUsageErrors per tool per job before the task is aborted (default: 3)')
+    ('tool_max_retry_limit',       '5',                                   'Max consecutive ToolUsageErrors per tool per job before the task is aborted (default: 3)'),
+    ('indexing_wait_attempts',     '7200',                                'Max polling attempts waiting for video indexing before crew starts (5 s per attempt; 7200 = 10 h)')
 ON CONFLICT (key) DO NOTHING;
 """
 

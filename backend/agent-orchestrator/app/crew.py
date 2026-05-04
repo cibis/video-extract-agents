@@ -310,9 +310,9 @@ async def run_crew(
     agent_model = db_agent_model or settings.agent_model
     _db_indexing_wait = results[6] if not isinstance(results[6], Exception) else None
     try:
-        _MAX_INDEXING_WAIT_ATTEMPTS = int(_db_indexing_wait) if _db_indexing_wait is not None else 600
+        _MAX_INDEXING_WAIT_ATTEMPTS = int(_db_indexing_wait) if _db_indexing_wait is not None else 7200
     except (ValueError, TypeError):
-        _MAX_INDEXING_WAIT_ATTEMPTS = 60
+        _MAX_INDEXING_WAIT_ATTEMPTS = 7200
     _db_agent_rpm = results[7] if not isinstance(results[7], Exception) else None
     agent_rpm_limit: int | None
     if _db_agent_rpm is not None and _db_agent_rpm != "":

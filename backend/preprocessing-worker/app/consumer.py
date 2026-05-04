@@ -46,6 +46,7 @@ async def process_video_message(message_body: dict) -> None:
         local_video = f"{tmpdir}/video.mp4"
 
         try:
+            await update_video_status(video_id, "uploaded")
             await download_video(blob_url, local_video)
             raw_frames = await extract_keyframes(local_video, tmpdir, fps=fps, scene_threshold=scene_threshold)
 

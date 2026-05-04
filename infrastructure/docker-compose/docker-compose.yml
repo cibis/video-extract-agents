@@ -240,7 +240,7 @@ services:
       context: ../../backend/preprocessing-worker
       dockerfile: Dockerfile
     tmpfs:
-      - /tmp:size=2g,mode=1777
+      - /tmp:size=20g,mode=1777
     ulimits:
       nofile:
         soft: 65536
