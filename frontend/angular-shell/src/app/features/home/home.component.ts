@@ -31,6 +31,7 @@ const SESSION_STORAGE_KEY = 'lc_session_id';
           <h2>Upload Files</h2>
           @if (!auth.signInRequired()) {
             <app-video-upload
+              #videoUpload
               [existingSessionId]="currentSessionId()"
               [sessionAssets]="sessionAssets()"
               (uploaded)="onUploadComplete($event)"
@@ -101,7 +102,7 @@ const SESSION_STORAGE_KEY = 'lc_session_id';
             Sign in to start chatting with the AI assistant.
           </div>
         } @else {
-          <div [class.disabled-div]="currentVideoIds().length === 0">
+          <div [class.disabled-div]="currentVideoIds().length === 0 || !(videoUploadRef?.allVideosIndexed() ?? true)">
             <app-librechat-iframe
               #librechatIframe
               [sessionId]="currentSessionId()"
@@ -304,6 +305,7 @@ export class HomeComponent implements OnInit, AfterViewInit, OnDestroy {
   @ViewChild('historyPanel') historyPanel?: ElementRef<HTMLDivElement>;
   @ViewChild('progressList') progressList?: ElementRef<HTMLUListElement>;
   @ViewChild('librechatIframe') librechatIframe?: LibrechatIframeComponent;
+  @ViewChild('videoUpload') videoUploadRef?: VideoUploadComponent;
 
   private _jobInterval?: ReturnType<typeof setInterval>;
   private _historyInterval?: ReturnType<typeof setInterval>;

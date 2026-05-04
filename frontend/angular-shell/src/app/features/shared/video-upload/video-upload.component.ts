@@ -218,6 +218,12 @@ export class VideoUploadComponent implements OnChanges, OnInit, OnDestroy  {
     );
   });
 
+  allVideosIndexed = computed(() => {
+    const videos = this.fileStatuses().filter(f => f.isVideo);
+    if (videos.length === 0) return true;
+    return videos.every(f => f.status === 'indexed');
+  });
+
   ngOnInit() {
     this.sub = this.newSessionEvent.subscribe(() => {
       if (this._indexingInterval) {
