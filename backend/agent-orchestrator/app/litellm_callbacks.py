@@ -571,7 +571,7 @@ def wrap_litellm_completion() -> Generator[None, None, None]:
         if (
             compressed_head is not None
             and isinstance(kwargs.get("messages"), list)
-            and n_crewai_len > n_crewai_at_compression
+            and n_crewai_len >= n_crewai_at_compression
         ):
             current = kwargs["messages"]
             new_tail = current[n_crewai_at_compression:]
