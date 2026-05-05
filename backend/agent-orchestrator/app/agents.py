@@ -70,8 +70,9 @@ _I18N = _make_i18n()
 #         allow_delegation=False,
 #     )
 
-def make_planner_agent(model: str, rpm_limit: int | None = None) -> Agent:
-    llm = LLM(model=model, temperature=0, **_seed_kwargs(model))
+def make_planner_agent(model: str, rpm_limit: int | None = None, max_tokens: int | None = None) -> Agent:
+    _max_tokens_kwargs = {"max_tokens": max_tokens} if max_tokens is not None else {}
+    llm = LLM(model=model, temperature=0, **_max_tokens_kwargs, **_seed_kwargs(model))
     return Agent(
         role="Video Extraction Planner",
         goal=(

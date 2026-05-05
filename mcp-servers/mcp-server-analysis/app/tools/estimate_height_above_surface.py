@@ -21,10 +21,10 @@ _depth_processor = None
 _depth_model = None
 _depth_model_lock = threading.Lock()
 
-# Depth Anything V2 returns near-zero values for sky / infinitely distant pixels.
-# Rows whose median depth is below this threshold are treated as sky when detecting
-# the horizon line.
-_SKY_DEPTH_THRESHOLD_M = 1.0
+# Depth Anything V2 Metric Outdoor assigns sky/infinite-distance pixels a depth
+# near the model's maximum range (~80 m). Rows whose median depth exceeds this
+# threshold are treated as sky when detecting the horizon line.
+_SKY_DEPTH_THRESHOLD_M = 40.0
 
 
 def _load_depth_model() -> tuple:
@@ -77,22 +77,22 @@ def _detect_horizon_frac(depth_map: np.ndarray) -> float | None:
     """Return horizon position as fraction of frame height (0=top, 1=bottom).
 
     Scans rows top-to-bottom looking for the sky→ground transition: the first
-    row whose median depth exceeds _SKY_DEPTH_THRESHOLD_M after at least one
-    sky row (near-zero depth) has been seen.
+    row whose median depth drops below _SKY_DEPTH_THRESHOLD_M after at least
+    one sky row (large depth near model max) has been seen.
 
     Returns None when no sky is visible (all ground — camera pointing down,
     or scene with no sky) or when the entire frame is sky. In both cases the
     caller falls back to a horizontal-camera assumption.
     """
     row_medians = np.median(depth_map, axis=1)  # shape (H,) — single C call
-    # No sky at all — first row already ground-depth. Return None so the
+    # No sky at top — first row is already ground-depth. Return None so the
     # caller falls back to the horizontal assumption rather than interpreting
     # horizon_frac=0.0 as "camera pointing upward 30°".
-    if row_medians[0] > _SKY_DEPTH_THRESHOLD_M:
+    if row_medians[0] < _SKY_DEPTH_THRESHOLD_M:
         return None
-    hits = np.where(row_medians > _SKY_DEPTH_THRESHOLD_M)[0]
+    hits = np.where(row_medians < _SKY_DEPTH_THRESHOLD_M)[0]
     if hits.size == 0:
-        return None
+        return None  # entire frame is sky
     return int(hits[0]) / depth_map.shape[0]
 
 
@@ -103,15 +103,18 @@ def _tilt_corrected_height(
 ) -> float:
     """Convert bottom-strip median depth to camera height using tilt geometry.
 
-    For a camera at height h tilted down by angle θ from horizontal with vertical
-    FOV vfov_deg, the bottom strip of the frame looks at angle (θ + vfov/2) below
-    horizontal. Camera height: h = raw_depth × sin(θ + vfov/2).
+    The horizon appears at row fraction horizon_frac (0=top, 1=bottom).
+    horizon_frac = 0.5 + camera_upward_tilt / vfov, so:
+        camera_upward_tilt = (horizon_frac - 0.5) * vfov
 
-    When the camera faces straight down (horizon above frame, horizon_frac=None
-    falling back to 0.5 is not right — but in practice straight-down cameras
-    produce uniform high-depth maps with no sky, so horizon_frac=None is handled
-    by assuming horizontal, which for a 60° vfov gives sin(30°)=0.5 — a slight
-    under-correction that is conservative).
+    The bottom edge of the frame looks at angle (vfov/2 - camera_upward_tilt)
+    below horizontal, which simplifies to vfov * (1 - horizon_frac).
+    Camera height: h = raw_depth × sin(vfov * (1 - horizon_frac)).
+
+    Examples (vfov=70°):
+      Horizontal camera  (horizon_frac=0.5): angle=35°, sin=0.574
+      Camera 7° up/jump  (horizon_frac=0.6): angle=28°, sin=0.469  ← shallower
+      Camera 7° down     (horizon_frac=0.4): angle=42°, sin=0.669  ← steeper
 
     Args:
         raw_depth_m: Median depth of the bottom surface_sample_pct rows (metres).
@@ -121,10 +124,10 @@ def _tilt_corrected_height(
     if horizon_frac is None:
         # No sky detected — assume horizontal camera (most conservative fallback)
         horizon_frac = 0.5
-    tilt_deg = (horizon_frac - 0.5) * vfov_deg
-    bottom_strip_angle_deg = tilt_deg + vfov_deg / 2
+    # Angle the bottom strip makes below horizontal
+    bottom_strip_angle_deg = vfov_deg * (1.0 - horizon_frac)
     if bottom_strip_angle_deg <= 0:
-        return 0.0  # camera pointing upward — ground not visible in bottom strip
+        return 0.0  # camera pointing so far upward that ground is not in bottom strip
     return raw_depth_m * math.sin(math.radians(bottom_strip_angle_deg))
 
 
@@ -154,7 +157,7 @@ async def estimate_height_above_surface(
       frame_batch_size: int — default 20, max 100
       surface_sample_pct: float 0.05–0.50 — fraction of frame height from bottom (default 0.20)
       height_threshold_m: float — metres above surface to count as airborne (default 2)
-      camera_vfov_deg: float 10–150 — camera vertical FOV in degrees (default 60)
+      camera_vfov_deg: float 10–150 — camera vertical FOV in degrees (default 70, matches GoPro Wide 16:9)
 
     Output:
       result_asset: str — blob URL of full per-frame height data
@@ -166,7 +169,7 @@ async def estimate_height_above_surface(
     frame_batch_size: int = min(100, max(1, int(payload.get("frame_batch_size", 20))))
     surface_sample_pct: float = max(0.05, min(0.5, float(payload.get("surface_sample_pct", 0.20))))
     height_threshold_m: float = max(0.05, float(payload.get("height_threshold_m", 2)))
-    camera_vfov_deg: float = max(10.0, min(150.0, float(payload.get("camera_vfov_deg", 60.0))))
+    camera_vfov_deg: float = max(10.0, min(150.0, float(payload.get("camera_vfov_deg", 70.0))))
 
     raw = await read_generated_asset(frames_asset)
     video_url: str = raw.get("video_url", "") if isinstance(raw, dict) else ""

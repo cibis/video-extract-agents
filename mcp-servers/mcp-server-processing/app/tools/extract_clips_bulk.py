@@ -29,7 +29,6 @@ async def extract_clips_bulk(
       segments_asset: str — blob URL from write_segments_asset (preferred); each segment
                             must carry video_url identifying its source video
       segments: list[{start_seconds, end_seconds, video_url}] — inline fallback
-      video_duration_seconds: float (optional — clamps end timestamps)
       output_prefix: str (optional, default "clip")
 
     Output:
@@ -40,7 +39,6 @@ async def extract_clips_bulk(
     job_id: str = payload.get("job_id", "")
     session_id: str | None = payload.get("session_id") or None
     output_prefix: str = payload.get("output_prefix", "clip")
-    video_duration = payload.get("video_duration_seconds")
 
     # Resolve segments — blob preferred, inline fallback
     segments_asset: str | None = payload.get("segments_asset")
@@ -66,8 +64,6 @@ async def extract_clips_bulk(
     for i, seg in enumerate(segments):
         start = max(0.0, float(seg["start_seconds"]))
         end = float(seg["end_seconds"])
-        if video_duration is not None:
-            end = min(end, float(video_duration))
 
         if end <= start:
             logger.warning(
@@ -127,7 +123,7 @@ async def extract_clips_bulk(
         session_id=session_id,
         job_id=job_id,
         data_type="clips",
-        filename="clip_list.json",
+        filename=f"clip_list_{uuid.uuid4().hex[:8]}.json",
         data=clip_urls,
     )
 

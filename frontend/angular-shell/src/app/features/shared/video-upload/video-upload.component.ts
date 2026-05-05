@@ -26,9 +26,10 @@ export interface UploadCompleteEvent {
 interface FileStatus {
   name: string;
   isVideo: boolean;
-  status: 'queued' | 'uploading' | 'done' | 'failed';
+  status: 'queued' | 'uploading' | 'done' | 'indexing' | 'indexed' | 'failed';
   error?: string;
   downloadUrl?: string;
+  videoId?: string;
 }
 
 @Component({
@@ -61,7 +62,7 @@ interface FileStatus {
             <span>Drop files here or click to browse</span>
             <small>Videos (MP4, MOV, AVI, MKV) · JSON, CSV, TXT, images — up to 10GB per video</small>
           } @else {
-            <span>Add more files to this session</span>
+            <span>Add more files to this session. Wait uploaded files to be indexed before submitting a task.</span>
             <small>{{ totalVideoCount() }} video(s) · {{ totalAssetCount() }} other file(s) uploaded so far</small>
           }
         </label>
@@ -72,8 +73,9 @@ interface FileStatus {
         <ul class="upload__file-list">
           @for (f of fileStatuses(); track f.name + f.status) {
             <li class="upload__file"
-              [class.upload__file--done]="f.status === 'done'"
+              [class.upload__file--done]="f.status === 'done' || f.status === 'indexed'"
               [class.upload__file--uploading]="f.status === 'uploading'"
+              [class.upload__file--indexing]="f.status === 'indexing'"
               [class.upload__file--failed]="f.status === 'failed'">
               <span class="upload__file-icon">{{ f.isVideo ? '🎬' : '📄' }}</span>
               <span class="upload__file-name">{{ f.name }}</span>
@@ -85,7 +87,11 @@ interface FileStatus {
                     <a class="upload__file-download" [href]="f.downloadUrl" target="_blank" download (click)="$event.stopPropagation()">↓ download</a>
                   } @else { ✓ }
                 }
-                @if (f.status === 'failed') { ✗ {{ f.error }} }
+                @if (f.status === 'indexing') {
+                  <span class="upload__file-indexing-dot"></span>indexing…
+                }
+                @if (f.status === 'indexed') { ✓ indexed }
+                @if (f.status === 'failed') { ✗ {{ f.error ?? 'failed' }} }
               </span>
             </li>
           }
@@ -142,7 +148,22 @@ interface FileStatus {
     }
     .upload__file--done { color: #2e7d32; }
     .upload__file--uploading { color: #0078d4; }
+    .upload__file--indexing { color: #0078d4; }
     .upload__file--failed { color: #c62828; }
+    @keyframes indexing-pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%       { opacity: 0.35; transform: scale(0.55); }
+    }
+    .upload__file-indexing-dot {
+      display: inline-block;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+      margin-right: 5px;
+      vertical-align: middle;
+      animation: indexing-pulse 1.1s ease-in-out infinite;
+    }
     .upload__file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .upload__file-status { font-size: 0.8rem; white-space: nowrap; }
     .upload__file-download { font-size: 0.75rem; color: #0078d4; text-decoration: none; }
@@ -168,6 +189,8 @@ export class VideoUploadComponent implements OnChanges, OnInit, OnDestroy  {
   private api = inject(ApiService);
   private uploadService = inject(UploadService);
 
+  private _indexingInterval: ReturnType<typeof setInterval> | null = null;
+
   dragging = signal(false);
   uploading = signal(false);
   fileStatuses = signal<FileStatus[]>([]);
@@ -190,11 +213,23 @@ export class VideoUploadComponent implements OnChanges, OnInit, OnDestroy  {
     const statuses = this.fileStatuses();
     const start = this.batchStartIndex();
     if (statuses.length === 0 || start >= statuses.length) return false;
-    return statuses.slice(start).every(f => f.status === 'done' || f.status === 'failed');
+    return statuses.slice(start).every(
+      f => f.status === 'done' || f.status === 'failed' || f.status === 'indexing' || f.status === 'indexed'
+    );
+  });
+
+  allVideosIndexed = computed(() => {
+    const videos = this.fileStatuses().filter(f => f.isVideo);
+    if (videos.length === 0) return true;
+    return videos.every(f => f.status === 'indexed');
   });
 
   ngOnInit() {
     this.sub = this.newSessionEvent.subscribe(() => {
+      if (this._indexingInterval) {
+        clearInterval(this._indexingInterval);
+        this._indexingInterval = null;
+      }
       this.fileStatuses.set([]);
       this.sessionId.set(null);
       this.videoIds.set([]);
@@ -202,7 +237,13 @@ export class VideoUploadComponent implements OnChanges, OnInit, OnDestroy  {
     });
   }
 
-  ngOnDestroy() { this.sub.unsubscribe(); }
+  ngOnDestroy() {
+    this.sub.unsubscribe();
+    if (this._indexingInterval) {
+      clearInterval(this._indexingInterval);
+      this._indexingInterval = null;
+    }
+  }
 
   ngOnChanges(changes: SimpleChanges): void {
     // When the parent passes updated session assets, populate download URLs on completed files.
@@ -231,8 +272,9 @@ export class VideoUploadComponent implements OnChanges, OnInit, OnDestroy  {
           const restored: FileStatus[] = unique.map(a => ({
             name: a.filename ?? (a.asset_type === 'uploaded_video' ? 'video' : 'file'),
             isVideo: a.asset_type === 'uploaded_video',
-            status: 'done' as const,
+            status: (a.asset_type === 'uploaded_video' ? 'indexing' : 'done') as FileStatus['status'],
             downloadUrl: a.signed_url || undefined,
+            videoId: a.asset_type === 'uploaded_video' ? (a.source_id ?? undefined) : undefined,
           }));
           if (restored.length === 0) return;
           this.fileStatuses.set(restored);
@@ -245,6 +287,23 @@ export class VideoUploadComponent implements OnChanges, OnInit, OnDestroy  {
             .map(a => a.source_id!);
           this.videoIds.set(videoIds);
           this.assetIds.set(assetIds);
+          // Immediately fetch real status for each restored video (no polling delay)
+          for (const a of unique.filter(u => u.asset_type === 'uploaded_video' && u.source_id)) {
+            const videoId = a.source_id!;
+            this.api.getVideoStatus(videoId).subscribe({
+              next: ({ status }) => {
+                const fs: FileStatus['status'] =
+                  status === 'indexed' ? 'indexed' :
+                  status === 'failed'  ? 'failed'  :
+                  'indexing';
+                this._setFileStatusByVideoId(videoId, fs);
+              },
+              error: () => {},
+            });
+          }
+          // Always start the poller — it watches all non-indexed videos and
+          // self-terminates once every video reaches 'indexed'
+          if (videoIds.length > 0) this._startIndexingPoller();
         },
         error: () => { /* non-critical */ },
       });
@@ -342,8 +401,9 @@ export class VideoUploadComponent implements OnChanges, OnInit, OnDestroy  {
     if (file.type.startsWith('video/')) {
       this.uploadService.uploadVideo(file, sessionId).subscribe({
         next: (videoId: string) => {
-          this._setFileStatus(file.name, 'done');
+          this._setFileStatusWithVideoId(file.name, 'indexing', videoId);
           this.videoIds.update(ids => [...ids, videoId]);
+          this._startIndexingPoller();
           this._uploadSequentially(files, index + 1, sessionId);
         },
         error: onError,
@@ -356,6 +416,47 @@ export class VideoUploadComponent implements OnChanges, OnInit, OnDestroy  {
           this._uploadSequentially(files, index + 1, sessionId);
         },
         error: onError,
+      });
+    }
+  }
+
+  private _setFileStatusWithVideoId(name: string, status: FileStatus['status'], videoId: string): void {
+    const statuses = this.fileStatuses();
+    const lastIdx = [...statuses].map(f => f.name).lastIndexOf(name);
+    if (lastIdx === -1) return;
+    this.fileStatuses.update(s =>
+      s.map((f, i) => i === lastIdx ? { ...f, status, videoId } : f)
+    );
+  }
+
+  private _setFileStatusByVideoId(videoId: string, status: FileStatus['status']): void {
+    this.fileStatuses.update(s =>
+      s.map(f => f.videoId === videoId ? { ...f, status } : f)
+    );
+  }
+
+  private _startIndexingPoller(): void {
+    if (this._indexingInterval) return;
+    this._indexingInterval = setInterval(() => this._pollIndexingStatuses(), 3000);
+  }
+
+  private _pollIndexingStatuses(): void {
+    const allVideos = this.fileStatuses().filter(f => f.videoId);
+    if (allVideos.length === 0 || allVideos.every(f => f.status === 'indexed')) {
+      clearInterval(this._indexingInterval!);
+      this._indexingInterval = null;
+      return;
+    }
+    for (const f of allVideos.filter(f => f.status !== 'indexed')) {
+      this.api.getVideoStatus(f.videoId!).subscribe({
+        next: ({ status }) => {
+          const mapped: FileStatus['status'] =
+            status === 'indexed' ? 'indexed' :
+            status === 'failed'  ? 'failed'  :
+            'indexing';
+          this._setFileStatusByVideoId(f.videoId!, mapped);
+        },
+        error: () => {},
       });
     }
   }

@@ -310,9 +310,9 @@ async def run_crew(
     agent_model = db_agent_model or settings.agent_model
     _db_indexing_wait = results[6] if not isinstance(results[6], Exception) else None
     try:
-        _MAX_INDEXING_WAIT_ATTEMPTS = int(_db_indexing_wait) if _db_indexing_wait is not None else 600
+        _MAX_INDEXING_WAIT_ATTEMPTS = int(_db_indexing_wait) if _db_indexing_wait is not None else 7200
     except (ValueError, TypeError):
-        _MAX_INDEXING_WAIT_ATTEMPTS = 60
+        _MAX_INDEXING_WAIT_ATTEMPTS = 7200
     _db_agent_rpm = results[7] if not isinstance(results[7], Exception) else None
     agent_rpm_limit: int | None
     if _db_agent_rpm is not None and _db_agent_rpm != "":
@@ -492,7 +492,8 @@ async def run_crew(
     # Capture the running event loop so callbacks can schedule async DB writes from threads
     loop = asyncio.get_running_loop()
 
-    planner = make_planner_agent(model=planner_model, rpm_limit=planner_rpm_limit)
+    _planner_max_tokens: int | None = context_windows.get(planner_model, {}).get("max_output_tokens")
+    planner = make_planner_agent(model=planner_model, rpm_limit=planner_rpm_limit, max_tokens=_planner_max_tokens)
     analyst = make_analysis_agent(model=agent_model, tools=analysis_tools, rpm_limit=agent_rpm_limit)
     processor = make_processing_agent(model=agent_model, tools=processing_tools, rpm_limit=agent_rpm_limit)
 

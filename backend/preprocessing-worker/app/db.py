@@ -59,7 +59,7 @@ async def get_stuck_videos(min_age_seconds: int = 60) -> list[dict]:
     rows = await pool.fetch(
         """SELECT id, user_id, original_url, session_id
            FROM videos
-           WHERE status = 'uploaded'
+           WHERE (status = 'uploaded' or status = 'failed')
              AND created_at < NOW() - ($1 * INTERVAL '1 second')""",
         min_age_seconds,
     )

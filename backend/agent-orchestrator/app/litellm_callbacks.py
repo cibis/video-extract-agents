@@ -74,6 +74,10 @@ class LlmCyclingLimitExceeded(Exception):
     """Raised when tool_max_retry_limit consecutive LLM calls produce no successful tool use."""
 
 
+class LlmCallLimitExceeded(Exception):
+    """Raised when a model exceeds max_calls_per_job for the current job."""
+
+
 def _is_failed_tool_result(calling, result: str) -> bool:
     """Return True when a ToolUsage.use() call represents a failure.
 
@@ -129,6 +133,13 @@ def guard_tool_usage_errors(limit: int) -> Generator[None, None, None]:
     _counts: dict[str, int] = {}  # tool_name → consecutive failure count
 
     def _guarded_use(self, calling, tool_string: str) -> str:
+        # Hard stop: raise from ToolUsage.use() context, not from litellm.completion.
+        # Exceptions from ToolUsage.use() propagate through crew.kickoff();
+        # exceptions from litellm.completion are caught internally by CrewAI.
+        _exceeded = getattr(_thread_local, "call_limit_exceeded_msg", None)
+        if _exceeded:
+            raise LlmCallLimitExceeded(_exceeded)
+
         tool_name = (
             getattr(calling, "tool_name", None)
             or getattr(getattr(self, "action", None), "tool", None)
@@ -503,6 +514,13 @@ def wrap_litellm_completion() -> Generator[None, None, None]:
     _original = _litellm.completion
 
     def _record_completion(*args, **kwargs):
+        # Bail immediately if the call limit was exceeded on a prior call.
+        # Raising here prevents unnecessary API calls, but CrewAI's LLM wrapper
+        # still catches it. The authoritative abort raise is in _guarded_use.
+        _exceeded_msg = getattr(_thread_local, "call_limit_exceeded_msg", None)
+        if _exceeded_msg:
+            raise LlmCallLimitExceeded(_exceeded_msg)
+
         # Recovery mechanism: when guard_tool_usage_errors activates recovery mode,
         # override the model with the planner model for all subsequent LLM calls
         # and enforce the planner_rpm_limit using a sliding 60-second window.
@@ -553,7 +571,7 @@ def wrap_litellm_completion() -> Generator[None, None, None]:
         if (
             compressed_head is not None
             and isinstance(kwargs.get("messages"), list)
-            and n_crewai_len > n_crewai_at_compression
+            and n_crewai_len >= n_crewai_at_compression
         ):
             current = kwargs["messages"]
             new_tail = current[n_crewai_at_compression:]
@@ -595,8 +613,11 @@ def wrap_litellm_completion() -> Generator[None, None, None]:
 
         result = None
         exc = None
+        _raw_content: str | None = None
         try:
             result = _original(*args, **kwargs)
+            if result and getattr(result, "choices", None):
+                _raw_content = result.choices[0].message.content
             _strip_response_fences(result)
             return result
         except Exception as e:
@@ -609,6 +630,8 @@ def wrap_litellm_completion() -> Generator[None, None, None]:
                 kwargs_retry = {k: v for k, v in kwargs.items() if k != "stop"}
                 try:
                     result = _original(*args, **kwargs_retry)
+                    if result and getattr(result, "choices", None):
+                        _raw_content = result.choices[0].message.content
                     _strip_response_fences(result)
                     return result
                 except Exception as e2:
@@ -666,9 +689,7 @@ def wrap_litellm_completion() -> Generator[None, None, None]:
                     out_type = "Error"
                     out_error = str(exc)
                 else:
-                    out_message = ""
-                    if result is not None and getattr(result, "choices", None):
-                        out_message = result.choices[0].message.content or ""
+                    out_message = _raw_content or ""
                     out_type = "Output"
                     out_error = None
 
@@ -763,10 +784,59 @@ def wrap_litellm_completion() -> Generator[None, None, None]:
                         f"(limit: {llm_cycle_limit})"
                     )
 
-    # Reset per-job compression state so a job running on a reused thread does not
-    # inherit a stale compressed head from the previous job on this thread.
+            # Hard stop: per-model call count vs max_calls_per_job (read from DB via context_windows).
+            # Runs after logging so the triggering call is always recorded first.
+            _cw = getattr(_thread_local, "context_windows", {})
+            _call_model = kwargs.get("model", args[0] if args else None)
+            if _call_model and _call_model in _cw:
+                _max_calls = _cw[_call_model].get("max_calls_per_job")
+                if _max_calls:
+                    _counts = getattr(_thread_local, "llm_call_counts", {})
+                    _counts[_call_model] = _counts.get(_call_model, 0) + 1
+                    _thread_local.llm_call_counts = _counts
+                    if _counts[_call_model] >= _max_calls:
+                        _limit_msg = (
+                            f"Job terminated: model '{_call_model}' has made "
+                            f"{_counts[_call_model]} LLM calls in this job, reaching the "
+                            f"hard stop limit of {_max_calls} calls per job. "
+                            "The job was aborted to prevent runaway execution. "
+                            "Review the session history for repeated compression or tool-retry loops."
+                        )
+                        logger.error("_record_completion: %s", _limit_msg)
+                        _job_id2 = getattr(_thread_local, "job_id", None)
+                        _session_id2 = getattr(_thread_local, "session_id", None)
+                        _counter2 = getattr(_thread_local, "seq_counter", None)
+                        _loop2 = getattr(_thread_local, "event_loop", None)
+                        if _job_id2:
+                            _limit_entry = {
+                                "job_id": _job_id2,
+                                "session_id": _session_id2,
+                                "service_name": settings.service_name,
+                                "log_type": "error",
+                                "model_id": _call_model,
+                                "tool_name": None,
+                                "message": _limit_msg,
+                                "message_type": "Error",
+                                "call_group_id": str(uuid.uuid4()),
+                                "sequence_num": next(_counter2) if _counter2 else 0,
+                                "error_text": _limit_msg,
+                            }
+                            if _loop2 is not None and _loop2.is_running():
+                                from app.db import record_job_log
+                                asyncio.run_coroutine_threadsafe(record_job_log(**_limit_entry), _loop2)
+                            else:
+                                _pending_logs.put(_limit_entry)
+                        # Store the flag — raising here is caught by CrewAI's LLM wrapper.
+                        # The actual abort raise happens in _guarded_use (ToolUsage.use context)
+                        # which propagates outside CrewAI's internal retry handler.
+                        _thread_local.call_limit_exceeded_msg = _limit_msg
+
+    # Reset per-job compression state and call counters so a job running on a reused
+    # thread does not inherit stale state from the previous job on this thread.
     _thread_local.compressed_head = None
     _thread_local.n_crewai_at_compression = 0
+    _thread_local.llm_call_counts = {}  # model → call count this job
+    _thread_local.call_limit_exceeded_msg = None
 
     _litellm.completion = _record_completion
     try:
