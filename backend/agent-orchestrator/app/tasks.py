@@ -227,12 +227,12 @@ def make_analysis_task(
             "extract_frames", "detect_motion", "detect_motion_sports", "detect_objects",
             "analyze_scene", "detect_objects_vision", "estimate_height_above_surface",
             "transcribe_audio", "query_asset", "write_query_asset", "read_asset",
-            "write_segments_asset",
+            "write_segments_asset", "write_asset", "patch_asset", "normalize_segments",
         }
     if not _processing_only_names:
         _processing_only_names = {
             "extract_clips_bulk", "extract_clip", "merge_clips",
-            "split_video", "transform_video", "write_asset",
+            "split_video", "transform_video",
         }
     _analysis_list = ", ".join(sorted(_analysis_names))
     _processing_list = ", ".join(sorted(_processing_only_names))
@@ -270,7 +270,8 @@ def make_analysis_task(
             f"{video_list}\n\n"
             "COST CONSTRAINTS:\n"
             "  - Free tools (detect_motion, detect_motion_sports, detect_objects, "
-            "estimate_height_above_surface, transcribe_audio, query_asset, extract_frames) "
+            "estimate_height_above_surface, transcribe_audio, query_asset, extract_frames, "
+            "write_asset, patch_asset, normalize_segments) "
             "have no API cost — use them with the largest frame_batch_size safe for memory "
             "(50–100 for CV tools; 20 per batch for estimate_height_above_surface).\n"
             "  - Frontier tools (analyze_scene, detect_objects_vision) cost per batch. "
@@ -316,8 +317,10 @@ def make_analysis_task(
             "If a tool returns a single-point timestamp where start_seconds == end_seconds, "
             "expand it to [timestamp − 1.5 s, timestamp + 1.5 s] before including it in the list. "
             "Then call write_segments_asset with the merged list, job_id, and session_id. "
-            "This persists the segments to blob storage so the processing agent can use "
-            "extract_clips_bulk without receiving the full segment list inline.\n\n"
+            "Immediately after, call normalize_segments(segments_asset=<url>, job_id=..., session_id=...) "
+            "to expand any short segments (< 3 s) to 3 s centered on their midpoint, merge overlapping "
+            "segments, and enforce start ≥ 0. Pass the normalize_segments result's segments_asset "
+            "(not the raw write_segments_asset URL) to the processing agent for extract_clips_bulk.\n\n"
             "If no segments were found across all tools, do NOT call write_segments_asset — "
             "return segments_asset as null.\n\n"
             "Collect results across all videos and return a unified analysis."
@@ -377,7 +380,9 @@ def make_processing_task(agent: Agent, job_id: str, user_id: str) -> Task:
             "use query_asset with a JSONPath expression rather than reading the full blob.\n\n"
             "Always pass job_id and session_id to split_video, merge_clips, transform_video, "
             "and write_asset so that all generated artifacts are stored under the correct job path.\n\n"
-            "If the plan specifies multiple output assets, use write_asset for non-video outputs. "
+            "If the plan specifies multiple output assets, use write_asset for non-video outputs "
+            "and patch_asset to update existing JSON assets in-place. "
+            "normalize_segments is also available to re-normalize a segments_asset before extraction if needed. "
             'Return your final output strictly as JSON: {"output_url": "..."}. '
             "If additional non-video outputs were generated, include them: "
             '{"output_url": "...", "additional_outputs": [{"blob_url": "...", "filename": "..."}]}.'

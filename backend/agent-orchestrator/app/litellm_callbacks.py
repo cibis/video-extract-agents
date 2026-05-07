@@ -231,22 +231,68 @@ _thread_local = threading.local()
 def _compress_messages(messages: list, model: str, original_fn) -> tuple[list, str]:
     """Compress the full conversation history using the planner model.
 
-    Keeps messages[0] (system prompt) and messages[1] (initial task + planner plan)
-    unchanged. Only the subsequent action/observation turns are compressed into a
-    single structured task-state summary.
+    Scans the first few messages to locate the task message (the one that contains
+    the "operations" JSON array) and keeps everything up to and including it unchanged.
+    Only the action/observation turns that follow are compressed.
+
+    Handles multiple layout variants:
+      - [0] system, [1] task, [2..N] turns          (standard)
+      - [0] placeholder, [1] system, [2] task, [3..N] turns  (CrewAI)
+      - no task message found → fall back to keeping first 2 messages
+
     Returns (new_messages, summary_text). Returns (messages, "") if nothing to compress.
     """
-    if len(messages) < 3:
+    import json as _json, re as _re2
+
+    # Scan the first few messages to find the one containing the operations plan.
+    _SCAN_LIMIT = 5
+    _task_msg_idx = None
+    for _i, _m in enumerate(messages[:_SCAN_LIMIT]):
+        _c = _m.get("content", "")
+        if isinstance(_c, str) and '"operations"' in _c:
+            _task_msg_idx = _i
+            break
+
+    # keep_head = everything up to and including the task message (or first 2 as fallback)
+    _keep_head_end = (_task_msg_idx + 1) if _task_msg_idx is not None else 2
+
+    if len(messages) <= _keep_head_end:
         return messages, ""
 
-    keep_head = messages[:2]
-    to_compress = messages[2:]
+    keep_head = messages[:_keep_head_end]
+    to_compress = messages[_keep_head_end:]
 
     formatted = "\n".join(
         f"[{m.get('role', '?').upper()}]: {m.get('content', '')}"
         for m in to_compress
         if isinstance(m.get("content"), str)
     )
+
+    # Extract plan step list from the task message so the compressor can reference
+    # step numbers in REMAINING WORK instead of re-describing steps in prose.
+    _ops_context = ""
+    if _task_msg_idx is not None:
+        try:
+            task_content = messages[_task_msg_idx].get("content", "")
+            _ops_match = _re2.search(r'"operations"\s*:\s*\[', task_content)
+            if _ops_match:
+                obj_start = task_content.rfind('{', 0, _ops_match.start())
+                if obj_start != -1:
+                    data = _json.loads(task_content[obj_start:])
+                    ops = data.get("operations", [])
+                    if ops:
+                        lines = [
+                            f"  {op['step']}. {op['operation']}"
+                            for op in ops
+                            if "step" in op and "operation" in op
+                        ]
+                        _ops_context = (
+                            "Plan steps (already in agent context above — use these step numbers in REMAINING WORK):\n"
+                            + "\n".join(lines) + "\n\n"
+                        )
+        except Exception:
+            pass  # degrade gracefully; REMAINING WORK falls back to prose
+
     compression_prompt = (
         "You are compressing an AI agent's conversation history to free context window space.\n"
         "The agent has access to tools defined in its system prompt. Your summary must allow it to continue using those tools.\n\n"
@@ -259,15 +305,16 @@ def _compress_messages(messages: list, model: str, original_fn) -> tuple[list, s
         "2. REMAINING WORK must always contain at least one item. "
         "If the task were truly complete, this compression would not be happening.\n"
         "3. Preserve all blob/asset URLs character-for-character — never paraphrase or shorten a URL.\n\n"
-        "Write the summary using EXACTLY these four sections:\n\n"
+        + _ops_context
+        + "Write the summary using EXACTLY these three sections:\n\n"
         "COMPLETED STEPS:\n"
         "List every tool call made and its result. For each: tool name, key outcome, and result asset URL if any.\n\n"
         "KEY DATA:\n"
         "All numerical findings: counts, heights, durations, timestamps, segment boundaries, scores.\n\n"
-        "CURRENT STATE:\n"
-        "One sentence: what the agent has established so far (do NOT use 'Final Answer' language).\n\n"
         "REMAINING WORK:\n"
-        "Explicit list of what still needs to be done, naming the exact tools to call next. Must not be empty.\n\n"
+        "State the next step using EXACTLY this format: 'Continue from step #N'\n"
+        "If there is partial progress within that step (e.g., 3 of 9 videos processed), add ONE short line stating only what remains for that step — do not re-describe the step itself.\n"
+        "If plan steps are not available above, list the exact tools still to call. Must not be empty.\n\n"
         "Strip completely: verbose reasoning, repeated observations, raw frame listings, intermediate deliberation, "
         "and any ReAct-format keywords listed in rule 1 above.\n\n"
         f"Conversation history to compress:\n{formatted}"
@@ -293,7 +340,9 @@ def _compress_messages(messages: list, model: str, original_fn) -> tuple[list, s
         "role": "user",
         "content": (
             f"[CONTEXT COMPRESSED — {len(to_compress)} messages replaced with task state summary]\n"
-            "Your full tool catalogue remains in the system prompt above. Continue the task using the summary below.\n\n"
+            "Your full tool catalogue remains in the system prompt above. "
+            "The original task and operations plan (with step numbers) remain in the message above this one. "
+            "Continue the task using the summary below.\n\n"
             + summary
         ),
     }

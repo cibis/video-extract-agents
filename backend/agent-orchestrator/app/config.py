@@ -4,22 +4,22 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     # LLM model — LiteLLM model string, e.g.:
-    #   bedrock/us.amazon.nova-2-lite-v1:0
+    #   anthropic/claude-haiku-4-5-20251001
     #   anthropic/claude-sonnet-4-6
     #   openai/gpt-4o
     # Must match the value seeded in app_settings (key: agent_model) so that
     # the fallback behaviour is identical to the DB-configured behaviour.
-    agent_model: str = "bedrock/us.amazon.nova-2-lite-v1:0"
+    agent_model: str = "anthropic/claude-haiku-4-5-20251001"
 
     # RPM limit for agent LLM calls — requests per minute.
-    # Empty or absent = no limit.  Default: 4 (= 1 call per 15 s).
+    # Empty or absent = no limit.  Default: 2 (= 1 call per 30 s).
     # Can be overridden at runtime via the app_settings DB table (key: agent_rpm_limit).
-    agent_rpm_limit: int | None = 4
+    agent_rpm_limit: int | None = 2
 
     # Fraction of a model's context_window_tokens at which automatic context compression fires.
     # Per-model override: set compression_threshold on the model_context_windows row.
     # Global fallback: this env var (CONTEXT_COMPRESSION_THRESHOLD).
-    context_compression_threshold: float = 0.7
+    context_compression_threshold: float = 0.2
 
     @field_validator("agent_rpm_limit", mode="before")
     @classmethod

@@ -11,6 +11,9 @@ from app.tools.write_segments_asset import write_segments_asset
 from app.tools.query_asset import query_asset, write_query_asset
 from app.tools.estimate_height_above_surface import estimate_height_above_surface
 from app.tools.ingest_video import ingest_video
+from app.tools.write_asset import write_asset
+from app.tools.patch_asset import patch_asset
+from app.tools.normalize_segments import normalize_segments
 
 TOOLS: dict[str, dict] = {
     "ingest_video": {
@@ -708,11 +711,11 @@ TOOLS: dict[str, dict] = {
                     "minimum": 10,
                     "maximum": 150,
                     "description": (
-                        "Vertical field of view of the camera in degrees. Default 60 (GoPro wide-angle). "
+                        "Vertical field of view of the camera in degrees. Default 70 (GoPro Wide 16:9). "
                         "Used for tilt correction: higher values = wider lens. "
-                        "Common values: GoPro Hero wide ~94, GoPro linear ~49, standard webcam ~60."
+                        "Common values: GoPro Wide 16:9 ~69, GoPro Linear 16:9 ~62, standard webcam ~60."
                     ),
-                    "default": 60,
+                    "default": 70,
                 },
                 "job_id": {"type": "string", "minLength": 1},
                 "session_id": {"type": "string"},
@@ -743,6 +746,173 @@ TOOLS: dict[str, dict] = {
                         "total_event_duration_seconds": {"type": "number"},
                     },
                 },
+            },
+        },
+    },
+    "write_asset": {
+        "fn": write_asset,
+        "description": (
+            "Write a generated non-video asset (JSON, text, CSV) to Blob Storage "
+            "and return its blob URL. Use this to persist analysis results, "
+            "structured data, or intermediate outputs for later tools or download."
+        ),
+        "capability_tags": ["assets", "write", "json", "text"],
+        "specialization": "general",
+        "cost_tier": "free",
+        "cost_note": "Blob write only — no model calls.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Text content to write.",
+                },
+                "filename": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Output filename (e.g. 'analysis.json').",
+                },
+                "content_type": {
+                    "type": "string",
+                    "description": "MIME type, e.g. 'application/json' or 'text/plain'.",
+                    "default": "application/json",
+                },
+                "session_id": {
+                    "type": "string",
+                    "description": "Session ID for scoping the blob path.",
+                },
+            },
+            "required": ["content", "filename"],
+        },
+        "output_schema": {
+            "type": "object",
+            "properties": {
+                "blob_url": {"type": "string"},
+                "filename": {"type": "string"},
+                "size_bytes": {"type": "integer"},
+            },
+        },
+    },
+    "normalize_segments": {
+        "fn": normalize_segments,
+        "description": (
+            "Expand short segments to a minimum duration (centered on their midpoint), "
+            "merge overlapping segments from the same video, and enforce video boundaries. "
+            "Accepts a segments_asset blob URL (from write_segments_asset) or an inline segments list. "
+            "Writes the result as a new segments_asset blob — pass directly to extract_clips_bulk. "
+            "Use after write_segments_asset to normalize all segments before clip extraction."
+        ),
+        "capability_tags": ["segments", "normalize", "expand", "merge"],
+        "specialization": "general",
+        "cost_tier": "free",
+        "cost_note": "Blob read + write + local arithmetic — no model calls.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "segments_asset": {
+                    "type": "string",
+                    "description": (
+                        "Blob URL of a segments_asset written by write_segments_asset. "
+                        "Provide this OR inline segments, not both."
+                    ),
+                },
+                "segments": {
+                    "type": "array",
+                    "description": "Inline segments list. Provide this OR segments_asset, not both.",
+                    "items": {"type": "object"},
+                },
+                "min_duration_seconds": {
+                    "type": "number",
+                    "default": 3.0,
+                    "description": (
+                        "Expand any segment shorter than this to exactly min_duration_seconds, "
+                        "centered on the original midpoint. Default 3.0."
+                    ),
+                },
+                "merge_overlapping": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Merge segments from the same video_url that overlap or are contiguous. Default true.",
+                },
+                "video_durations": {
+                    "type": "object",
+                    "description": (
+                        "Optional map of {video_url: duration_seconds}. "
+                        "When provided for a video, end_seconds is clamped to that duration "
+                        "and start is slid back as far as possible without going negative. "
+                        "Omit to enforce only the start≥0 boundary."
+                    ),
+                },
+                "job_id": {"type": "string", "minLength": 1},
+                "session_id": {"type": "string"},
+            },
+            "required": ["job_id"],
+        },
+        "output_schema": {
+            "type": "object",
+            "properties": {
+                "segments_asset": {
+                    "type": "string",
+                    "description": "Blob URL of normalized segments — pass directly to extract_clips_bulk.",
+                },
+                "segments_count": {"type": "integer", "description": "Total segments after normalization."},
+                "expanded_count": {"type": "integer", "description": "Segments that were expanded to min_duration."},
+                "merged_count":   {"type": "integer", "description": "Segments removed by overlap merging."},
+            },
+        },
+    },
+    "patch_asset": {
+        "fn": patch_asset,
+        "description": (
+            "Apply RFC 6902 JSON Patch operations to an existing JSON blob in-place. "
+            "Reads the target blob, applies the operations, and writes the result back to the "
+            "same URL. Returns only a brief summary — does not return the modified content. "
+            "Use to update fields in an existing analysis result or asset without rewriting the entire file."
+        ),
+        "capability_tags": ["assets", "patch", "json", "update"],
+        "specialization": "general",
+        "cost_tier": "free",
+        "cost_note": "Blob read + write only — no model calls.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "blob_url": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "URL of the JSON blob to patch (must contain a valid JSON document).",
+                },
+                "operations": {
+                    "type": "array",
+                    "minItems": 1,
+                    "description": (
+                        "RFC 6902 JSON Patch operations. Each item must have 'op' and 'path'; "
+                        "'value' is required for add/replace/test; 'from' is required for move/copy. "
+                        "Supported ops: add, remove, replace, move, copy, test. "
+                        "Example: [{\"op\": \"replace\", \"path\": \"/status\", \"value\": \"done\"}]"
+                    ),
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "op": {"type": "string", "enum": ["add", "remove", "replace", "move", "copy", "test"]},
+                            "path": {"type": "string"},
+                            "value": {},
+                            "from": {"type": "string"},
+                        },
+                        "required": ["op", "path"],
+                    },
+                },
+                "job_id": {"type": "string", "description": "Job ID for logging context."},
+                "session_id": {"type": "string", "description": "Session ID for logging context."},
+            },
+            "required": ["blob_url", "operations"],
+        },
+        "output_schema": {
+            "type": "object",
+            "properties": {
+                "blob_url": {"type": "string", "description": "Same URL as input — the patched blob."},
+                "operations_applied": {"type": "integer", "description": "Number of patch operations applied."},
+                "size_bytes": {"type": "integer", "description": "Size of the patched JSON in bytes."},
             },
         },
     },

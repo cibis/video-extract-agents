@@ -53,6 +53,21 @@ _CREWAI_INTERNAL_KEYS = {"metadata", "security_context"}
 # Keys excluded from the cache key so the same tool+input matches across sessions/jobs.
 _CACHE_IGNORE_KEYS = {"job_id", "session_id", "frame_batch_size"}
 
+# Tools whose results must never be served from cache — either because they
+# mutate state (write_asset, patch_asset, write_segments_asset, write_query_asset,
+# ingest_video) or because they read dynamic blob content that changes between calls
+# (read_asset, query_asset).
+_NO_CACHE_TOOLS = {
+    "write_asset",
+    "patch_asset",
+    "normalize_segments",
+    "query_asset",
+    "write_query_asset",
+    "ingest_video",
+    "read_asset",
+    "write_segments_asset",
+}
+
 
 def _compute_cache_key(payload: dict[str, Any]) -> str:
     """SHA-256 of the payload with job_id/session_id removed and keys sorted."""
@@ -158,7 +173,7 @@ class McpTool(BaseTool):
             # --- Check tool call cache (user-scoped, excludes job_id/session_id from key) ---
             user_id = getattr(_thread_local, "user_id", None)
             cache_key: str | None = None
-            if user_id and _loop is not None and _loop.is_running():
+            if user_id and _loop is not None and _loop.is_running() and self._tool_name not in _NO_CACHE_TOOLS:
                 cache_key = _compute_cache_key(payload)
                 try:
                     from app.db import get_tool_cache
@@ -224,7 +239,7 @@ class McpTool(BaseTool):
             logger.info("MCP tool result: %s -> %s", self._tool_name, str(result)[:500])
 
             # --- Store result in cache (fire-and-forget) ---
-            if user_id and cache_key and _loop is not None and _loop.is_running() and isinstance(result, dict):
+            if user_id and cache_key and _loop is not None and _loop.is_running() and isinstance(result, dict) and self._tool_name not in _NO_CACHE_TOOLS:
                 try:
                     from app.db import set_tool_cache
                     asyncio.run_coroutine_threadsafe(
@@ -240,10 +255,16 @@ class McpTool(BaseTool):
                     complete_tool_progress(call_group_id, success=True), _loop
                 )
 
-            # Extract frontier model log metadata if present (e.g. from analyze_scene)
-            job_log_entry: dict | None = None
-            if _mcp_job_log_queue is not None and isinstance(result, dict):
-                job_log_entry = result.pop("_job_log", None)
+            # Always pop _job_log / _job_logs so they never leak into the agent's tool output.
+            # Supports both a single dict (_job_log) and a list of dicts (_job_logs).
+            job_log_entries: list[dict] = []
+            if isinstance(result, dict):
+                single = result.pop("_job_log", None)
+                if single is not None:
+                    job_log_entries.append(single)
+                multi = result.pop("_job_logs", None)
+                if isinstance(multi, list):
+                    job_log_entries.extend(multi)
 
             try:
                 output_message = json.dumps(result, ensure_ascii=False)
@@ -267,28 +288,27 @@ class McpTool(BaseTool):
                 "error_text": None,
             })
 
-            # Log any frontier model call embedded in the result
-            if job_log_entry:
-                job_id = job_log_entry.get("job_id") or job_id
-                session_id = job_log_entry.get("session_id") or session_id
-                # Stamp frontier log with current sequence numbers
+            # Log any frontier model calls embedded in the result
+            for entry in job_log_entries:
+                eff_job_id = entry.get("job_id") or job_id
+                eff_session_id = entry.get("session_id") or session_id
                 frontier_group_id = str(uuid.uuid4())
                 seq_f_in = next(counter) if counter is not None else 0
                 seq_f_out = next(counter) if counter is not None else 0
                 base = dict(
-                    job_id=job_id,
-                    session_id=session_id,
-                    service_name=job_log_entry.get("service_name", "unknown"),
-                    log_type=job_log_entry.get("log_type", "llm_call"),
-                    model_id=job_log_entry.get("model_id"),
-                    tool_name=job_log_entry.get("tool_name"),
-                    agent_role=job_log_entry.get("agent_role"),
-                    task_name=job_log_entry.get("task_name"),
+                    job_id=eff_job_id,
+                    session_id=eff_session_id,
+                    service_name=entry.get("service_name", "unknown"),
+                    log_type=entry.get("log_type", "llm_call"),
+                    model_id=entry.get("model_id"),
+                    tool_name=entry.get("tool_name"),
+                    agent_role=entry.get("agent_role"),
+                    task_name=entry.get("task_name"),
                     call_group_id=frontier_group_id,
-                    error_text=job_log_entry.get("error_text"),
+                    error_text=entry.get("error_text"),
                 )
-                self._write_log_row({**base, "message": job_log_entry.get("input_data"), "message_type": "Input", "sequence_num": seq_f_in})
-                self._write_log_row({**base, "message": job_log_entry.get("output_data"), "message_type": "Output", "sequence_num": seq_f_out})
+                self._write_log_row({**base, "message": entry.get("input_data"), "message_type": "Input", "sequence_num": seq_f_in})
+                self._write_log_row({**base, "message": entry.get("output_data"), "message_type": "Output", "sequence_num": seq_f_out})
 
             return json.dumps(result)
         except Exception as exc:

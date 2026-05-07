@@ -52,7 +52,7 @@ class Settings(BaseSettings):
     frontier_max_tokens: int = 10000
 
     # RPM limit for tool frontier model calls — requests per minute.
-    # Empty or absent = no limit.  Default: 4 (= 1 call per 15 s).
+    # Empty or absent = no limit.  Default: 4.
     # Can be overridden at runtime via the app_settings DB table (key: tool_rpm_limit).
     tool_rpm_limit: int | None = 4
 

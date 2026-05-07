@@ -7,6 +7,7 @@ to a blob and returns only a compact summary.
 """
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from typing import Any, Callable
@@ -69,6 +70,7 @@ async def analyze_scene(
     image_urls = [f.get("url", "") for f in frames]
     per_frame_results: list[dict] = []
     per_batch_info: list[dict] = []
+    _frontier_logs: list[dict] = []
     batches_done = 0
 
     async def _callback(data_uris: list[str], metadata: dict) -> None:
@@ -85,6 +87,24 @@ async def analyze_scene(
         fetch_errors: dict[str, str] = metadata.get("fetch_errors", {})
 
         batch_results = await client.call_vision_batch(prompt, data_uris)
+        _frontier_logs.append({
+            "log_type": "llm_call",
+            "model_id": client.model_id,
+            "service_name": "mcp-server-analysis",
+            "tool_name": "analyze_scene",
+            "job_id": job_id,
+            "session_id": session_id,
+            "input_data": json.dumps({
+                "prompt_snippet": prompt[:300],
+                "batch_index": metadata["batch_index"],
+                "images_in_batch": len(data_uris),
+                "total_frames": len(frames),
+            }),
+            "output_data": json.dumps({
+                "batch_index": metadata["batch_index"],
+                "results_count": len(batch_results),
+            }),
+        })
 
         # Align results with frame metadata.
         # data_uris may be fewer than batch_frames if some frames failed to fetch;
@@ -179,4 +199,4 @@ async def analyze_scene(
         "analyze_scene: processed %d frames, wrote %s",
         len(per_frame_results), result_asset,
     )
-    return {"result_asset": result_asset, "summary": summary}
+    return {"result_asset": result_asset, "summary": summary, "_job_logs": _frontier_logs}
